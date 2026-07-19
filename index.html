@@ -377,6 +377,7 @@ async function renderVideoFinal() {
     const { FFmpeg } = FFmpegWASM;
     const { fetchFile, toBlobURL } = FFmpegUtil;
     const ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => { console.log('[ffmpeg]', message); });
     ffmpeg.on('progress', ({ progress }) => {
       const pct = Math.min(99, Math.round(progress * 100));
       progressBarInner.style.width = pct + '%';
@@ -384,10 +385,16 @@ async function renderVideoFinal() {
     });
 
     const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
+    progressLabel.textContent = 'Downloading video engine (~25MB, first time only)...';
+    progressBarInner.style.width = '2%';
+    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+    progressBarInner.style.width = '10%';
+    progressLabel.textContent = 'Downloading video engine (~25MB, first time only)... almost there';
+    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    progressBarInner.style.width = '25%';
+    progressLabel.textContent = 'Starting engine...';
+    await ffmpeg.load({ coreURL, wasmURL });
+    progressBarInner.style.width = '30%';
 
     progressLabel.textContent = 'Preparing overlay...';
     const overlayCanvas = buildVideoOverlayCanvas();
@@ -432,7 +439,7 @@ async function renderVideoFinal() {
     step3.classList.add('active');
   } catch (err) {
     console.error(err);
-    progressLabel.textContent = 'Something went wrong -- try a shorter/smaller video.';
+    progressLabel.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
     document.getElementById('createBtn').disabled = false;
   }
 }
