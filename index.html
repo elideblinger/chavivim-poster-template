@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Chavivim Posters">
@@ -58,6 +58,16 @@
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
+  .chipsWrap { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .chip {
+    display:flex; align-items:center; gap:6px; background:#3a3a3a; color:#fff;
+    border-radius:16px; padding:5px 8px 5px 12px; font-size:13px; font-weight:700;
+  }
+  .chip button {
+    width:16px; height:16px; padding:0; border-radius:50%; background:#666; color:#fff;
+    font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .backBtn { background:#444 !important; color:#fff !important; margin-top:8px; }
   #resultWrap { text-align:center; }
   #resultCanvas, #resultVideo { max-width:100%; border-radius:0; box-shadow:0 4px 20px rgba(0,0,0,.5); }
   a.download {
@@ -110,13 +120,15 @@
   <label>Condition</label>
   <input type="text" id="conditionInput">
 
-  <label>Units (comma separated)</label>
-  <input type="text" id="unitsInput">
+  <label>Units</label>
+  <div id="unitsChips" class="chipsWrap"></div>
+  <input type="text" id="unitsInput" placeholder="type a unit, press Enter">
 
   <label>Header line (right side, above units)</label>
-  <input type="text" id="headerInput" value="Great job units">
+  <input type="text" id="headerInput" value="Great job all units">
 
   <button type="button" id="createBtn">Create</button>
+  <button type="button" id="backBtn2" class="backBtn">Back</button>
 
   <div id="progressWrap">
     <div id="progressLabel">Processing video on your phone...</div>
@@ -130,7 +142,8 @@
     <video id="resultVideo" controls playsinline style="display:none;"></video>
     <br>
     <button type="button" id="saveBtn" class="download" style="border:none;">Save</button><br><br>
-    <button type="button" id="backBtn" style="background:#444;color:#fff;">Edit again</button>
+    <button type="button" id="backBtn" style="background:#444;color:#fff;">Edit again</button><br><br>
+    <button type="button" id="newBtn" style="background:#444;color:#fff;">Create New</button>
   </div>
 </div>
 
@@ -254,6 +267,75 @@ document.getElementById('backBtn').addEventListener('click', () => {
   step2.classList.add('active');
 });
 
+document.getElementById('backBtn2').addEventListener('click', () => {
+  step2.classList.remove('active');
+  step1.classList.add('active');
+});
+
+document.getElementById('newBtn').addEventListener('click', () => {
+  step3.classList.remove('active');
+  step1.classList.add('active');
+  document.getElementById('locationInput').value = '';
+  document.getElementById('conditionInput').value = '';
+  document.getElementById('headerInput').value = 'Great job all units';
+  headerManuallyEdited = false;
+  unitsList = [];
+  renderUnitsChips();
+  photoInput.value = '';
+  videoInput.value = '';
+});
+
+// -- units chip input --
+let unitsList = [];
+const unitsChipsEl = document.getElementById('unitsChips');
+const unitsInputEl = document.getElementById('unitsInput');
+
+function renderUnitsChips() {
+  unitsChipsEl.innerHTML = '';
+  unitsList.forEach((u, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const label = document.createElement('span');
+    label.textContent = u;
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '\u00d7';
+    rm.addEventListener('click', () => { unitsList.splice(i,1); renderUnitsChips(); });
+    chip.appendChild(label);
+    chip.appendChild(rm);
+    unitsChipsEl.appendChild(chip);
+  });
+  updateAutoHeader();
+}
+
+// Auto-fills the header based on unit count, unless the user has manually
+// typed something different into that field themselves.
+const headerInputEl = document.getElementById('headerInput');
+let headerManuallyEdited = false;
+headerInputEl.addEventListener('input', () => { headerManuallyEdited = true; });
+function updateAutoHeader() {
+  if (headerManuallyEdited) return;
+  const n = unitsList.length;
+  headerInputEl.value = n === 0 ? 'Great job all units' : (n === 1 ? 'Great job unit' : 'Great job units');
+}
+
+unitsInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const v = unitsInputEl.value.trim();
+    if (v) {
+      unitsList.push(v);
+      renderUnitsChips();
+    }
+    unitsInputEl.value = '';
+    unitsInputEl.focus();
+  }
+});
+function getUnitsText() {
+  return unitsList.join(', ');
+}
+renderUnitsChips(); // set correct empty-state header on load
+
 function drawRoundedRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x+r, y);
@@ -287,45 +369,91 @@ function drawLogoAndText(ctx) {
   ctx.fill();
   ctx.drawImage(logoImg, drawX, drawY, LOGO_W, logoH);
 
-  const ink = '#333333';
-  ctx.fillStyle = ink;
+  ctx.fillStyle = '#333333';
   ctx.textBaseline = 'alphabetic';
 
   const leftX = 45*SCALE;
   const rightX = CUTOUT.x + CUTOUT.w - 14*SCALE;
   const fs = 22*SCALE;
-  const ascent = fs * 0.72, descent = fs * 0.22;
-  const lineGap = 30*SCALE; // baseline-to-baseline gap between the two lines
-  const blockH = ascent + lineGap + descent;
+  const minFs = 10*SCALE;
+  const lineGap = 30*SCALE; // baseline-to-baseline gap between lines
   const stripTop = CUTOUT.y + CUTOUT.h, stripBottom = CANVAS_H;
-  const topOfBlock = stripTop + ((stripBottom - stripTop) - blockH) / 2;
-  const line1Y = topOfBlock + ascent;
-  const line2Y = line1Y + lineGap;
-  const maxHalfWidth = 300*SCALE;
+  const safeMargin = 10*SCALE;
+  const logoLeftEdge = LOGO_CX - ringRadius - safeMargin;
+  const logoRightEdge = LOGO_CX + ringRadius + safeMargin;
+
+  const rawMaxHalf = 300*SCALE;
+  const leftMaxWidth = Math.max(40*SCALE, Math.min(rawMaxHalf, logoLeftEdge - leftX));
+  const rightMaxWidth = Math.max(40*SCALE, Math.min(rawMaxHalf, rightX - logoRightEdge));
 
   const location = document.getElementById('locationInput').value || '';
   const condition = document.getElementById('conditionInput').value || '';
   const header = document.getElementById('headerInput').value || '';
-  const unitsRaw = document.getElementById('unitsInput').value || '';
-  const units = unitsRaw.split(',').map(s=>s.trim()).filter(Boolean).join(', ');
+  const units = getUnitsText();
 
-  ctx.textAlign = 'left';
-  let s1 = fitText(ctx, location, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
-  ctx.font = `700 ${s1}px Poppins, sans-serif`;
-  ctx.fillText(location, leftX, line1Y);
+  // wraps `text` into as many lines as needed (greedy, word-by-word) so each
+  // line fits maxWidth -- this is the "add a line if more space is needed"
+  // behavior for the units row when it's long.
+  function wrapToLines(text, maxWidth, size, weight) {
+    ctx.font = `${weight} ${size}px Poppins, sans-serif`;
+    const words = text.split(' ');
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width <= maxWidth || !cur) {
+        cur = test;
+      } else {
+        lines.push(cur);
+        cur = w;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
 
-  let s2 = fitText(ctx, condition, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
-  ctx.font = `700 ${s2}px Poppins, sans-serif`;
-  ctx.fillText(condition, leftX, line2Y);
+  // builds the final line list + font size for a column given its two
+  // logical rows (some may be empty -- those get skipped, and a single
+  // remaining row is centered rather than pinned to the top slot)
+  function buildColumnLines(rowA, rowB, maxWidth) {
+    const rows = [rowA, rowB].filter(r => r && r.length);
+    if (rows.length === 0) return { lines: [], size: fs };
 
-  ctx.textAlign = 'right';
-  let s3 = fitText(ctx, header, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
-  ctx.font = `700 ${s3}px Poppins, sans-serif`;
-  ctx.fillText(header, rightX, line1Y);
+    // fixed size, wrap (not shrink) each row that doesn't fit
+    let size = fs;
+    let lines = [];
+    for (const r of rows) lines.push(...wrapToLines(r, maxWidth, size, 700));
 
-  let s4 = fitText(ctx, units, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
-  ctx.font = `700 ${s4}px Poppins, sans-serif`;
-  ctx.fillText(units, rightX, line2Y);
+    // only shrink if the wrapped block is too tall to fit the strip at all
+    const availH = stripBottom - stripTop;
+    while (size > minFs) {
+      const ascent = size * 0.72, descent = size * 0.22;
+      const blockH = ascent + descent + lineGap * (lines.length - 1);
+      if (blockH <= availH) break;
+      size -= 1;
+      lines = [];
+      for (const r of rows) lines.push(...wrapToLines(r, maxWidth, size, 700));
+    }
+    return { lines, size };
+  }
+
+  function drawColumn(x, align, rowA, rowB, maxWidth) {
+    const { lines, size } = buildColumnLines(rowA, rowB, maxWidth);
+    if (!lines.length) return;
+    const ascent = size * 0.72, descent = size * 0.22;
+    const blockH = ascent + descent + lineGap * (lines.length - 1);
+    const topOfBlock = stripTop + ((stripBottom - stripTop) - blockH) / 2;
+    let y = topOfBlock + ascent;
+    ctx.font = `700 ${size}px Poppins, sans-serif`;
+    ctx.textAlign = align;
+    for (const line of lines) {
+      ctx.fillText(line, x, y);
+      y += lineGap;
+    }
+  }
+
+  drawColumn(leftX, 'left', location, condition, leftMaxWidth);
+  drawColumn(rightX, 'right', header, units, rightMaxWidth);
 }
 
 let currentCanvas = null;
