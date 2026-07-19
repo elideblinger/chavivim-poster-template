@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chavivim Posters">
 <title>Chavivim Posters</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet">
@@ -108,7 +111,7 @@
 <div class="panel step" id="step3">
   <div id="resultWrap">
     <canvas id="resultCanvas" width="2193" height="3072"></canvas><br>
-    <a class="download" id="downloadLink" download="chavivim-poster.png">Download</a><br><br>
+    <button type="button" id="saveBtn" class="download" style="border:none;">Save Image</button><br><br>
     <button type="button" id="backBtn" style="background:#444;color:#fff;">Edit again</button>
   </div>
 </div>
@@ -343,9 +346,47 @@ function renderFinal() {
   ctx.font = `700 ${s4}px Poppins, sans-serif`;
   ctx.fillText(units, rightX, line2Y);
 
-  const link = document.getElementById('downloadLink');
-  link.href = canvas.toDataURL('image/png');
+  currentCanvas = canvas;
 }
+
+let currentCanvas = null;
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if (!currentCanvas) return;
+  currentCanvas.toBlob(async (blob) => {
+    if (!blob) return;
+    const file = new File([blob], 'chavivim-poster.png', { type: 'image/png' });
+
+    // Mobile (iOS/Android): native share sheet with a real "Save Image" /
+    // "Save to Photos" option -- this is the only reliable way to get a
+    // canvas image into the gallery from Safari/Chrome mobile.
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Chavivim Poster' });
+        return;
+      } catch (err) {
+        // user cancelled the share sheet -- fall through to the fallback below
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+
+    // Desktop fallback: normal download
+    const isDesktop = !/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const url = URL.createObjectURL(blob);
+    if (isDesktop) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chavivim-poster.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      // Mobile fallback with no Share API support: open the image full-screen
+      // so the user can long-press it and choose "Save to Photos" / "Save Image".
+      window.open(url, '_blank');
+    }
+  }, 'image/png');
+});
 </script>
 </body>
 </html>
