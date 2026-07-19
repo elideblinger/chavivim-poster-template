@@ -57,6 +57,15 @@
     text-align:center;
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
+  #livePreviewCanvas { display:block; width:100%; height:auto; }
+  #videoOverlay { position:absolute; inset:0; pointer-events:none; }
+  #videoOverlayLogo { position:absolute; }
+  .ovText {
+    position:absolute; color:#333333; font-family:'Poppins',sans-serif; font-weight:700;
+    line-height:1.15; white-space:pre-wrap;
+  }
+  .ovLeft { text-align:left; }
+  .ovRight { text-align:right; }
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .chipsWrap { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
   .chip {
@@ -101,10 +110,17 @@
 
 <div class="panel step" id="step2">
   <div id="photoPreviewWrap" style="display:none;">
-    <img id="photoPreviewImg" src="" alt="">
+    <canvas id="livePreviewCanvas"></canvas>
   </div>
-  <div id="videoPreviewWrap" style="display:none;">
+  <div id="videoPreviewWrap" style="display:none; position:relative;">
     <video id="videoPreviewEl" src="" muted playsinline controls></video>
+    <div id="videoOverlay">
+      <img id="videoOverlayLogo" src="">
+      <div id="videoOverlayLocation" class="ovText ovLeft"></div>
+      <div id="videoOverlayCondition" class="ovText ovLeft"></div>
+      <div id="videoOverlayHeader" class="ovText ovRight"></div>
+      <div id="videoOverlayUnits" class="ovText ovRight"></div>
+    </div>
   </div>
   <p class="hint">the border adapts to fit your photo/video -- nothing gets cropped</p>
 
@@ -168,7 +184,6 @@ let CANVAS_W = 0, CANVAS_H = 0;
 let LOGO_CX = 0, LOGO_CY = 0;
 
 const mediaInput = document.getElementById('mediaInput');
-const photoPreviewImg = document.getElementById('photoPreviewImg');
 const photoPreviewWrap = document.getElementById('photoPreviewWrap');
 const videoPreviewWrap = document.getElementById('videoPreviewWrap');
 const videoPreviewEl = document.getElementById('videoPreviewEl');
@@ -194,6 +209,7 @@ mediaInput.addEventListener('change', (e) => {
       computeGeometry(videoW, videoH);
       videoPreviewWrap.style.display = '';
       photoPreviewWrap.style.display = 'none';
+      updateVideoOverlay();
       step1.classList.remove('active');
       step2.classList.add('active');
     };
@@ -233,15 +249,11 @@ async function loadPhotoFile(file) {
 
 function showPhotoStep() {
   computeGeometry(photoImg.width || photoImg.naturalWidth, photoImg.height || photoImg.naturalHeight);
-  if (photoImg.toDataURL) {
-    photoPreviewImg.src = photoImg.toDataURL();
-  } else {
-    photoPreviewImg.src = photoImg.src;
-  }
   photoPreviewWrap.style.display = '';
   videoPreviewWrap.style.display = 'none';
   step1.classList.remove('active');
   step2.classList.add('active');
+  renderPhotoFinal(); // live preview IS the real render -- no separate thumbnail path
 }
 
 function computeGeometry(w, h) {
@@ -253,9 +265,93 @@ function computeGeometry(w, h) {
   LOGO_CY = CUTOUT.y + CUTOUT.h; // logo center sits exactly on the photo's bottom edge
 }
 
+// -- live preview: re-render on every keystroke --
+const liveInputs = ['locationInput','conditionInput','headerInput','unitsInput'].map(id => document.getElementById(id));
+let liveTimer = null;
+function scheduleLivePreview() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => {
+    if (mode === 'photo' && CUTOUT) renderPhotoFinal();
+    if (mode === 'video' && CUTOUT) updateVideoOverlay();
+  }, 100);
+}
+liveInputs.forEach(el => el.addEventListener('input', scheduleLivePreview));
+
+// Video can't be re-encoded live (that would mean re-running ffmpeg on every
+// keystroke), so the live preview is an HTML/CSS overlay sized and
+// positioned by percentage to match the real geometry -- close enough to
+// judge placement. The actual burned-in version is only generated once,
+// when Create is pressed.
+function updateVideoOverlay() {
+  if (!CUTOUT) return;
+  const wrapEl = document.getElementById('videoOverlay');
+  const logoEl = document.getElementById('videoOverlayLogo');
+  const locEl = document.getElementById('videoOverlayLocation');
+  const condEl = document.getElementById('videoOverlayCondition');
+  const hdrEl = document.getElementById('videoOverlayHeader');
+  const unitsEl = document.getElementById('videoOverlayUnits');
+
+  // pad the video itself into the yellow frame via CSS padding-box, matching
+  // the same proportions as the real render
+  videoPreviewWrap.style.aspectRatio = `${CANVAS_W} / ${CANVAS_H}`;
+  videoPreviewWrap.style.background = BORDER_COLOR;
+  videoPreviewWrap.style.padding =
+    `${(BORDER/CANVAS_H)*100}% ${(BORDER/CANVAS_W)*100}% ${(BOTTOM_STRIP/CANVAS_H)*100}% ${(BORDER/CANVAS_W)*100}%`;
+  videoPreviewWrap.style.boxSizing = 'border-box';
+  videoPreviewEl.style.width = '100%';
+  videoPreviewEl.style.height = '100%';
+  videoPreviewEl.style.objectFit = 'fill';
+  videoPreviewEl.style.borderRadius = `${(CORNER_R/CANVAS_W)*100}%`;
+  videoPreviewEl.style.display = 'block';
+
+  logoEl.src = LOGO_SRC;
+  const logoWPct = (LOGO_W/CANVAS_W)*100;
+  logoEl.style.width = logoWPct + '%';
+  logoEl.style.left = ((LOGO_CX - LOGO_W/2)/CANVAS_W*100) + '%';
+  logoEl.style.top = ((LOGO_CY - (LOGO_W*(logoImg.naturalHeight/logoImg.naturalWidth))/2)/CANVAS_H*100) + '%';
+
+  const fsPct = (22/ (CANVAS_H/SCALE)) * 100; // approx font size as % of height
+  const stripTopPct = ((CUTOUT.y+CUTOUT.h)/CANVAS_H)*100;
+  const stripBottomPct = 100;
+  const midPct = (stripTopPct + stripBottomPct)/2;
+
+  [locEl,condEl,hdrEl,unitsEl].forEach(el => { el.style.fontSize = `max(9px, ${fsPct}vh)`; });
+
+  locEl.textContent = document.getElementById('locationInput').value || '';
+  condEl.textContent = document.getElementById('conditionInput').value || '';
+  hdrEl.textContent = document.getElementById('headerInput').value || '';
+  unitsEl.textContent = getUnitsText();
+
+  const leftPct = (45/ (CANVAS_W/SCALE) ) * 100;
+  const rightPct = ((CUTOUT.x+CUTOUT.w-14*SCALE)/CANVAS_W)*100;
+
+  locEl.style.left = leftPct + '%';
+  condEl.style.left = leftPct + '%';
+  hdrEl.style.right = (100-rightPct) + '%';
+  unitsEl.style.right = (100-rightPct) + '%';
+
+  const hasLoc = !!locEl.textContent, hasCond = !!condEl.textContent;
+  const hasHdr = !!hdrEl.textContent, hasUnits = !!unitsEl.textContent;
+  const lineGapPct = 3;
+  if (hasLoc && hasCond) {
+    locEl.style.top = (midPct - lineGapPct) + '%';
+    condEl.style.top = (midPct + lineGapPct) + '%';
+  } else {
+    locEl.style.top = midPct + '%';
+    condEl.style.top = midPct + '%';
+  }
+  if (hasHdr && hasUnits) {
+    hdrEl.style.top = (midPct - lineGapPct) + '%';
+    unitsEl.style.top = (midPct + lineGapPct) + '%';
+  } else {
+    hdrEl.style.top = midPct + '%';
+    unitsEl.style.top = midPct + '%';
+  }
+}
+
 document.getElementById('createBtn').addEventListener('click', async () => {
   if (mode === 'photo') {
-    renderPhotoFinal();
+    currentCanvas = renderPhotoToCanvas(document.getElementById('resultCanvas'));
     document.getElementById('resultCanvas').style.display = '';
     document.getElementById('resultVideo').style.display = 'none';
     step2.classList.remove('active');
@@ -460,8 +556,7 @@ function drawLogoAndText(ctx) {
 
 let currentCanvas = null;
 
-function renderPhotoFinal() {
-  const canvas = document.getElementById('resultCanvas');
+function renderPhotoToCanvas(canvas) {
   canvas.width = CANVAS_W;
   canvas.height = CANVAS_H;
   const ctx = canvas.getContext('2d');
@@ -477,8 +572,12 @@ function renderPhotoFinal() {
   ctx.restore();
 
   drawLogoAndText(ctx);
+  return canvas;
+}
 
-  currentCanvas = canvas;
+// used for the live preview while editing (step 2)
+function renderPhotoFinal() {
+  renderPhotoToCanvas(document.getElementById('livePreviewCanvas'));
 }
 
 // Builds the border+hole+logo+text overlay as a transparent PNG, to be
