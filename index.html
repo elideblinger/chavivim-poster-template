@@ -141,7 +141,7 @@ const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAwEAAAMZCAYAAABY
 
 const SCALE = 3; // render at 3x for a sharp final image
 const BORDER = 26*SCALE;      // border thickness on top/left/right
-const BOTTOM_STRIP = 104*SCALE; // space below the photo/video, holds the text
+const BOTTOM_STRIP = 111*SCALE; // space below the photo/video, holds the text
 const INNER_W = 678*SCALE;    // fixed inner width -- height adapts to the media's own ratio
 const CORNER_R = 34*SCALE;
 const BORDER_COLOR = '#F0B02B';
@@ -234,7 +234,7 @@ function computeGeometry(w, h) {
   CANVAS_W = INNER_W + BORDER*2;
   CANVAS_H = BORDER + innerH + BOTTOM_STRIP;
   LOGO_CX = CANVAS_W/2;
-  LOGO_CY = CUTOUT.y + CUTOUT.h - 9*SCALE;
+  LOGO_CY = CUTOUT.y + CUTOUT.h; // logo center sits exactly on the photo's bottom edge
 }
 
 document.getElementById('createBtn').addEventListener('click', async () => {
@@ -293,8 +293,14 @@ function drawLogoAndText(ctx) {
 
   const leftX = 45*SCALE;
   const rightX = CUTOUT.x + CUTOUT.w - 14*SCALE;
-  const line1Y = CANVAS_H - 64*SCALE;
-  const line2Y = CANVAS_H - 34*SCALE;
+  const fs = 22*SCALE;
+  const ascent = fs * 0.72, descent = fs * 0.22;
+  const lineGap = 30*SCALE; // baseline-to-baseline gap between the two lines
+  const blockH = ascent + lineGap + descent;
+  const stripTop = CUTOUT.y + CUTOUT.h, stripBottom = CANVAS_H;
+  const topOfBlock = stripTop + ((stripBottom - stripTop) - blockH) / 2;
+  const line1Y = topOfBlock + ascent;
+  const line2Y = line1Y + lineGap;
   const maxHalfWidth = 300*SCALE;
 
   const location = document.getElementById('locationInput').value || '';
@@ -304,20 +310,20 @@ function drawLogoAndText(ctx) {
   const units = unitsRaw.split(',').map(s=>s.trim()).filter(Boolean).join(', ');
 
   ctx.textAlign = 'left';
-  let s1 = fitText(ctx, location, maxHalfWidth, 20*SCALE, 10*SCALE, 700);
+  let s1 = fitText(ctx, location, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
   ctx.font = `700 ${s1}px Poppins, sans-serif`;
   ctx.fillText(location, leftX, line1Y);
 
-  let s2 = fitText(ctx, condition, maxHalfWidth, 20*SCALE, 10*SCALE, 700);
+  let s2 = fitText(ctx, condition, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
   ctx.font = `700 ${s2}px Poppins, sans-serif`;
   ctx.fillText(condition, leftX, line2Y);
 
   ctx.textAlign = 'right';
-  let s3 = fitText(ctx, header, maxHalfWidth, 20*SCALE, 10*SCALE, 700);
+  let s3 = fitText(ctx, header, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
   ctx.font = `700 ${s3}px Poppins, sans-serif`;
   ctx.fillText(header, rightX, line1Y);
 
-  let s4 = fitText(ctx, units, maxHalfWidth, 20*SCALE, 10*SCALE, 700);
+  let s4 = fitText(ctx, units, maxHalfWidth, 22*SCALE, 10*SCALE, 700);
   ctx.font = `700 ${s4}px Poppins, sans-serif`;
   ctx.fillText(units, rightX, line2Y);
 }
