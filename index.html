@@ -90,6 +90,7 @@
   #progressBarInner { background: var(--yellow); height:100%; width:0%; transition: width .2s; }
   #progressLabel { font-size:13px; color:#ccc; margin-top:8px; }
 </style>
+<script src="https://unpkg.com/mp4-muxer@5/build/mp4-muxer.min.js"></script>
 </head>
 <body>
 
@@ -495,6 +496,125 @@ function renderPhotoFinal() {
 
 async function renderVideoFinal() {
   if (!videoFile) return;
+  const supportsWebCodecs = typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined' && window.Mp4Muxer;
+  if (supportsWebCodecs) {
+    try {
+      await renderVideoFinalWebCodecs();
+      return;
+    } catch (err) {
+      console.warn('WebCodecs path failed, falling back to server:', err);
+    }
+  }
+  await renderVideoFinalServer();
+}
+
+// -- fast path: encodes on-device using the phone's hardware video chip.
+// Output has no audio (muxing the original audio back in via WebCodecs is
+// a much bigger job -- this trades that off for speed and reliability).
+async function renderVideoFinalWebCodecs() {
+  progressWrap.classList.add('active');
+  document.getElementById('createBtn').disabled = true;
+  progressLabel.textContent = 'Processing on your phone...';
+  progressBarInner.style.width = '2%';
+
+  const w = Math.round(CANVAS_W / 2) * 2; // must be even for h264
+  const h = Math.round(CANVAS_H / 2) * 2;
+
+  const muxer = new window.Mp4Muxer.Muxer({
+    target: new window.Mp4Muxer.ArrayBufferTarget(),
+    video: { codec: 'avc', width: w, height: h },
+    fastStart: 'in-memory'
+  });
+
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => console.error('encoder error', e)
+  });
+  encoder.configure({
+    codec: 'avc1.42001f',
+    width: w,
+    height: h,
+    bitrate: 5_000_000,
+    framerate: 30
+  });
+
+  const workCanvas = document.createElement('canvas');
+  workCanvas.width = w;
+  workCanvas.height = h;
+  const workCtx = workCanvas.getContext('2d');
+
+  const srcVideo = document.createElement('video');
+  srcVideo.src = videoPreviewEl.src;
+  srcVideo.muted = true;
+  srcVideo.playsInline = true;
+  await new Promise(res => { srcVideo.onloadeddata = res; });
+
+  let frameCount = 0;
+  const duration = srcVideo.duration;
+
+  await new Promise((resolve, reject) => {
+    function drawFrame() {
+      workCtx.fillStyle = BORDER_COLOR;
+      workCtx.fillRect(0, 0, w, h);
+      workCtx.save();
+      drawRoundedRectPath(workCtx, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h, CORNER_R);
+      workCtx.clip();
+      workCtx.drawImage(srcVideo, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h);
+      workCtx.restore();
+      drawLogoAndText(workCtx);
+
+      const frame = new VideoFrame(workCanvas, { timestamp: Math.round(srcVideo.currentTime * 1_000_000) });
+      encoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
+      frame.close();
+      frameCount++;
+
+      if (duration > 0) {
+        const pct = Math.min(95, Math.round((srcVideo.currentTime / duration) * 95));
+        progressBarInner.style.width = pct + '%';
+        progressLabel.textContent = `Processing on your phone... ${pct}%`;
+      }
+    }
+
+    srcVideo.onended = () => resolve();
+    srcVideo.onerror = () => reject(new Error('Video playback failed during processing.'));
+
+    if ('requestVideoFrameCallback' in srcVideo) {
+      const cb = () => {
+        if (srcVideo.ended) return;
+        drawFrame();
+        srcVideo.requestVideoFrameCallback(cb);
+      };
+      srcVideo.requestVideoFrameCallback(cb);
+    } else {
+      reject(new Error('requestVideoFrameCallback not supported on this browser.'));
+    }
+
+    srcVideo.play().catch(reject);
+  });
+
+  await encoder.flush();
+  muxer.finalize();
+
+  const { buffer } = muxer.target;
+  const outBlob = new Blob([buffer], { type: 'video/mp4' });
+  const outUrl = URL.createObjectURL(outBlob);
+
+  const resultVideoEl = document.getElementById('resultVideo');
+  resultVideoEl.src = outUrl;
+  resultVideoEl.style.display = '';
+  document.getElementById('resultCanvas').style.display = 'none';
+  currentVideoBlob = outBlob;
+
+  progressWrap.classList.remove('active');
+  document.getElementById('createBtn').disabled = false;
+  step2.classList.remove('active');
+  step3.classList.add('active');
+}
+
+// -- fallback path: uploads to the real server (has audio, works on any
+// device, but slower) -- used automatically if WebCodecs isn't supported
+// or fails for any reason.
+async function renderVideoFinalServer() {
   progressWrap.classList.add('active');
   document.getElementById('createBtn').disabled = true;
   progressLabel.textContent = 'Uploading...';
