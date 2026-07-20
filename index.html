@@ -438,10 +438,22 @@ function updateAutoHeader() {
   headerInputEl.value = n === 0 ? 'Great job all units' : (n === 1 ? 'Great job unit' : 'Great job units');
 }
 
+// Normalizes unit numbers to a consistent format: uppercase letters,
+// dash between the letter prefix and number suffix -- e.g. "oc67" or
+// "oc-67" both become "OC-67".
+function normalizeUnit(raw) {
+  const s = raw.trim();
+  const m = s.match(/^([A-Za-z]+)[\s-]*([0-9]+)$/);
+  if (m) {
+    return `${m[1].toUpperCase()}-${m[2]}`;
+  }
+  return s.toUpperCase();
+}
+
 unitsInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    const v = unitsInputEl.value.trim();
+    const v = normalizeUnit(unitsInputEl.value);
     if (v) {
       unitsList.push(v);
       renderUnitsChips();
