@@ -527,12 +527,18 @@ async function renderVideoFinalWebCodecs() {
 
   // Decode the original file's audio track up front (if it has one).
   // Videos with no audio, or audio that fails to decode, just come out
-  // silent instead of failing the whole render.
+  // silent instead of failing the whole render. A timeout guards against
+  // this step hanging indefinitely on a device with poor audio codec support.
+  progressLabel.textContent = 'Reading audio...';
   let audioBuffer = null;
   try {
     const arrayBuf = await videoFile.arrayBuffer();
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+    const decodePromise = audioCtx.decodeAudioData(arrayBuf);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Audio decode timed out')), 15000)
+    );
+    audioBuffer = await Promise.race([decodePromise, timeoutPromise]);
   } catch (err) {
     console.warn('No usable audio track found, output will be silent:', err);
   }
@@ -552,7 +558,12 @@ async function renderVideoFinalWebCodecs() {
 
   await output.start();
   if (audioSource) {
-    await audioSource.add(audioBuffer);
+    progressLabel.textContent = 'Encoding audio...';
+    const addPromise = audioSource.add(audioBuffer);
+    const timeoutPromise2 = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Audio encoding timed out -- this device may not support AAC encoding via WebCodecs.')), 15000)
+    );
+    await Promise.race([addPromise, timeoutPromise2]);
   }
 
   const srcVideo = document.createElement('video');
