@@ -450,17 +450,31 @@ function normalizeUnit(raw) {
   return s.toUpperCase();
 }
 
+function commitUnitEntry() {
+  const v = normalizeUnit(unitsInputEl.value);
+  if (v) {
+    unitsList.push(v);
+    renderUnitsChips();
+    scheduleLivePreview();
+  }
+  unitsInputEl.value = '';
+  unitsInputEl.focus();
+}
+
 unitsInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    const v = normalizeUnit(unitsInputEl.value);
-    if (v) {
-      unitsList.push(v);
-      renderUnitsChips();
-      scheduleLivePreview();
-    }
-    unitsInputEl.value = '';
-    unitsInputEl.focus();
+    commitUnitEntry();
+  }
+});
+
+// Many Android keyboards (Gboard included) don't reliably fire a proper
+// keydown Enter -- they instead report it via an 'input' event with
+// inputType 'insertLineBreak'. Catching both makes Enter work consistently
+// across desktop and mobile.
+unitsInputEl.addEventListener('input', (e) => {
+  if (e.inputType === 'insertLineBreak') {
+    commitUnitEntry();
   }
 });
 function getUnitsText() {
