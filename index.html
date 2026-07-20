@@ -90,7 +90,6 @@
   #progressBarInner { background: var(--yellow); height:100%; width:0%; transition: width .2s; }
   #progressLabel { font-size:13px; color:#ccc; margin-top:8px; }
 </style>
-<script src="https://unpkg.com/mp4-muxer@5.2.1/build/mp4-muxer.js"></script>
 </head>
 <body>
 
@@ -515,41 +514,24 @@ async function renderVideoFinalWebCodecs() {
   progressLabel.textContent = 'Processing on your phone...';
   progressBarInner.style.width = '2%';
 
+  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH } =
+    await import('https://esm.sh/mediabunny');
+
   const w = Math.round(CANVAS_W / 2) * 2; // must be even for h264
   const h = Math.round(CANVAS_H / 2) * 2;
-
-  const muxer = new window.Mp4Muxer.Muxer({
-    target: new window.Mp4Muxer.ArrayBufferTarget(),
-    video: { codec: 'avc', width: w, height: h },
-    fastStart: 'in-memory'
-  });
-
-  // High profile, level 5.1 -- supports much larger frames than the
-  // Baseline/level-3.1 string used before, which caps out around 1280x720
-  // and was silently failing to configure at our actual (larger) resolution
-  const encoderConfig = {
-    codec: 'avc1.640033',
-    width: w,
-    height: h,
-    bitrate: 8_000_000,
-    framerate: 30
-  };
-
-  const support = await VideoEncoder.isConfigSupported(encoderConfig);
-  if (!support.supported) {
-    throw new Error(`This device can't encode ${w}x${h} video in this codec (isConfigSupported returned false).`);
-  }
-
-  const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error: (e) => { throw new Error('Encoder error: ' + e.message); }
-  });
-  encoder.configure(encoderConfig);
 
   const workCanvas = document.createElement('canvas');
   workCanvas.width = w;
   workCanvas.height = h;
   const workCtx = workCanvas.getContext('2d');
+
+  const output = new Output({
+    format: new Mp4OutputFormat(),
+    target: new BufferTarget()
+  });
+  const videoSource = new CanvasSource(workCanvas, { codec: 'avc', bitrate: QUALITY_HIGH });
+  output.addVideoTrack(videoSource);
+  await output.start();
 
   const srcVideo = document.createElement('video');
   srcVideo.src = videoPreviewEl.src;
@@ -557,11 +539,11 @@ async function renderVideoFinalWebCodecs() {
   srcVideo.playsInline = true;
   await new Promise(res => { srcVideo.onloadeddata = res; });
 
-  let frameCount = 0;
   const duration = srcVideo.duration;
+  const frameDuration = 1 / 30;
 
   await new Promise((resolve, reject) => {
-    function drawFrame() {
+    async function drawFrame() {
       workCtx.fillStyle = BORDER_COLOR;
       workCtx.fillRect(0, 0, w, h);
       workCtx.save();
@@ -571,10 +553,7 @@ async function renderVideoFinalWebCodecs() {
       workCtx.restore();
       drawLogoAndText(workCtx);
 
-      const frame = new VideoFrame(workCanvas, { timestamp: Math.round(srcVideo.currentTime * 1_000_000) });
-      encoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
-      frame.close();
-      frameCount++;
+      await videoSource.add(srcVideo.currentTime, frameDuration);
 
       if (duration > 0) {
         const pct = Math.min(95, Math.round((srcVideo.currentTime / duration) * 95));
@@ -589,8 +568,7 @@ async function renderVideoFinalWebCodecs() {
     if ('requestVideoFrameCallback' in srcVideo) {
       const cb = () => {
         if (srcVideo.ended) return;
-        drawFrame();
-        srcVideo.requestVideoFrameCallback(cb);
+        drawFrame().then(() => srcVideo.requestVideoFrameCallback(cb));
       };
       srcVideo.requestVideoFrameCallback(cb);
     } else {
@@ -600,10 +578,9 @@ async function renderVideoFinalWebCodecs() {
     srcVideo.play().catch(reject);
   });
 
-  await encoder.flush();
-  muxer.finalize();
+  await output.finalize();
 
-  const { buffer } = muxer.target;
+  const { buffer } = output.target;
   const outBlob = new Blob([buffer], { type: 'video/mp4' });
   const outUrl = URL.createObjectURL(outBlob);
 
