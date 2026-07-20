@@ -506,15 +506,15 @@ async function renderVideoFinal() {
 }
 
 // -- fast path: encodes on-device using the phone's hardware video chip.
-// Output has no audio (muxing the original audio back in via WebCodecs is
-// a much bigger job -- this trades that off for speed and reliability).
+// Includes the original audio track (decoded and re-muxed alongside the
+// video frames).
 async function renderVideoFinalWebCodecs() {
   progressWrap.classList.add('active');
   document.getElementById('createBtn').disabled = true;
   progressLabel.textContent = 'Processing on your phone...';
   progressBarInner.style.width = '2%';
 
-  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH } =
+  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource, QUALITY_HIGH } =
     await import('https://esm.sh/mediabunny');
 
   const w = Math.round(CANVAS_W / 2) * 2; // must be even for h264
@@ -525,13 +525,35 @@ async function renderVideoFinalWebCodecs() {
   workCanvas.height = h;
   const workCtx = workCanvas.getContext('2d');
 
+  // Decode the original file's audio track up front (if it has one).
+  // Videos with no audio, or audio that fails to decode, just come out
+  // silent instead of failing the whole render.
+  let audioBuffer = null;
+  try {
+    const arrayBuf = await videoFile.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+  } catch (err) {
+    console.warn('No usable audio track found, output will be silent:', err);
+  }
+
   const output = new Output({
     format: new Mp4OutputFormat(),
     target: new BufferTarget()
   });
   const videoSource = new CanvasSource(workCanvas, { codec: 'avc', bitrate: QUALITY_HIGH });
   output.addVideoTrack(videoSource);
+
+  let audioSource = null;
+  if (audioBuffer) {
+    audioSource = new AudioBufferSource({ codec: 'aac', bitrate: QUALITY_HIGH });
+    output.addAudioTrack(audioSource);
+  }
+
   await output.start();
+  if (audioSource) {
+    await audioSource.add(audioBuffer);
+  }
 
   const srcVideo = document.createElement('video');
   srcVideo.src = videoPreviewEl.src;
