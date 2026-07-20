@@ -59,6 +59,30 @@
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
   #livePreviewCanvas { display:block; width:100%; height:auto; }
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
+  .autocompleteWrap { position: relative; }
+  .autocompleteList {
+    display: none;
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .autocompleteList.open { display: block; }
+  .autocompleteItem {
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #eee;
+    cursor: pointer;
+  }
+  .autocompleteItem:hover, .autocompleteItem.active {
+    background: var(--yellow);
+    color: #222;
+  }
   .chipsWrap { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
   .chip {
     display:flex; align-items:center; gap:6px; background:#3a3a3a; color:#fff;
@@ -111,10 +135,16 @@
   <p class="hint">the border adapts to fit your photo/video -- nothing gets cropped</p>
 
   <label>Location</label>
-  <input type="text" id="locationInput">
+  <div class="autocompleteWrap">
+    <input type="text" id="locationInput" autocomplete="off">
+    <div class="autocompleteList" id="locationList"></div>
+  </div>
 
   <label>Condition</label>
-  <input type="text" id="conditionInput">
+  <div class="autocompleteWrap">
+    <input type="text" id="conditionInput" autocomplete="off">
+    <div class="autocompleteList" id="conditionList"></div>
+  </div>
 
   <label>Units</label>
   <div id="unitsChips" class="chipsWrap"></div>
@@ -154,6 +184,40 @@ const CORNER_R = 34*SCALE;
 const BORDER_COLOR = '#F0B02B';
 const LOGO_W = 182*SCALE;
 const LOGO_RING_CX_IMG = 373.3, LOGO_RING_CY_IMG = 383.5, LOGO_RING_DIAM_IMG = 727.4;
+
+// -- location/condition autocomplete data, pulled from real dispatch history --
+const LOCATIONS_ALPHA = ["BP", "BQE", "Bayville NJ", "Blooming Grove", "Bloomingburg", "Boro Park", "Brick", "Bronx", "Bushwick", "Canarsie", "Cape May NJ", "Crown Heights", "Downtown Brooklyn", "Elizabeth, NJ", "Ellenville", "FDR", "Fallsburg", "Flatbush", "HRD @ GWB", "Hamilton Ave", "Harris", "Highland Mills", "Hillburn", "Howell", "Hurleyville", "I-195", "I-87", "I-95, Connecticut", "Interstate", "Interstate Canada", "Inwood", "JFK Airport", "Jackson", "Jersey City", "KJ", "Kauneonga Lake", "Kerestir", "Kissimmee, FL", "Lakewood", "Liberty", "Lincoln Tunnel", "Linden", "Loch Sheldrake", "Lower Manhattan", "M11 - London", "Manhattan", "Middletown", "Milford, CT", "Millstone Township", "Monroe", "Monticello", "Montreal", "NJ Turnpike", "NJ-4", "NY Thruway", "NY-17", "NYC", "NYS Thruway", "New Square", "Oakhurst NJ", "Orlando", "Parksville", "Perth Amboy", "Prospect Exp", "Prospect Expressway", "RFK Bridge", "Rockland", "Rockland Chavivim", "Sheepshead Bay", "South Brunswick", "South Fallsburg", "Stamford Hill - London", "Staten Island", "Swan Lake", "Swan Lake - Moments Before The Zman", "Tampa", "Tinton Falls NJ", "Tokaj", "Toms River", "UCLH Hospital - London", "US-6", "Wall Township", "Williamsburg", "Woodbourn", "Woodbourne", "Woodbury", "Woodridge"];
+const CONDITIONS_ALPHA = ["Ambulance Stalled", "Animal Condition", "Assist A Caller", "Battery Reset", "Blowout", "Boiler Issue", "Boost", "Bus Boost", "Bus Stalled", "Car Not Starting", "Car Stalled", "Car Stalled - Blocking Traffic", "Car Stalled Blocking Traffic", "Chop A Lock", "Door Jammed", "Double Blowout", "Elevator Stuck", "Flat Tire", "Flooding Condition", "Gas Smell", "Item Fell Into A Mikvah", "Lockout", "Multiple Flooding Conditions", "Out Of Battery", "Out Of Gas", "Out Of Gas - Blocking Traffic", "Power Outage", "Recovered Expensive Item", "Residential Door Jammed", "Residential Lockout", "Residential Lockout Person Involved", "Retrieve A Item", "Retrieve Item In Drain", "Secure A Bumper", "Stuck In A Ditch", "Stuck In Ditch", "Stuck In Mud", "Stuck On A Curb", "Traffic Control", "Trailer Lockout", "Tree Down", "Truck Boost", "Truck Lockout", "Truck Stalled Blocking Traffic", "Vehicle Lockout", "Vehicle Overheat", "Water Gushing"];
+const CONDITIONS_TOP = ['Flat Tire', 'Blowout', 'Boost', 'Out Of Gas'];
+const CONDITIONS_DEFAULT = CONDITIONS_TOP.concat(CONDITIONS_ALPHA.filter(c => !CONDITIONS_TOP.includes(c)));
+
+function renderDatalist(id, items) {
+  const dl = document.getElementById(id);
+  dl.innerHTML = '';
+  for (const item of items) {
+    const opt = document.createElement('option');
+    opt.value = item;
+    dl.appendChild(opt);
+  }
+}
+
+// Location: always alphabetical, both closed and while typing.
+renderDatalist('locationsDatalist', LOCATIONS_ALPHA);
+
+// Condition: shows the 4 most common first (then alphabetical) when the
+// field is empty/just focused, but switches to purely alphabetical as soon
+// as you start typing.
+const conditionInputEl = document.getElementById('conditionInput');
+function updateConditionDatalist() {
+  if (!conditionInputEl.value) {
+    renderDatalist('conditionsDatalist', CONDITIONS_DEFAULT);
+  } else {
+    renderDatalist('conditionsDatalist', CONDITIONS_ALPHA);
+  }
+}
+updateConditionDatalist();
+conditionInputEl.addEventListener('focus', updateConditionDatalist);
+conditionInputEl.addEventListener('input', updateConditionDatalist);
 
 let mode = 'photo'; // 'photo' | 'video'
 let photoImg = new Image();
@@ -353,6 +417,116 @@ function getUnitsText() {
   return unitsList.join(', ');
 }
 renderUnitsChips(); // set correct empty-state header on load
+
+// -- location/condition autocomplete --
+// Built from the real frequency counts in the group's WhatsApp history.
+const CONDITIONS_PINNED = ['Flat Tire', 'Blowout', 'Boost', 'Out of Gas'];
+const CONDITIONS_REST = [
+  'Animal Condition', 'Assist a Caller', 'Battery Reset', 'Car Not Starting',
+  'Car Stalled', 'Car Stalled Blocking Traffic', 'Chop a Lock', 'Double Blowout',
+  'Elevator Stuck', 'Flooding Condition', 'Gas Smell', 'Lockout',
+  'Out of Battery', 'Out of Gas - Blocking Traffic', 'Residential Door Jammed',
+  'Residential Lockout', 'Retrieve Item in Drain', 'Secure a Bumper',
+  'Stuck in a Ditch', 'Stuck in Ditch', 'Stuck in Mud', 'Traffic Control',
+  'Trailer Lockout', 'Tree Down', 'Truck Lockout', 'Vehicle Lockout',
+  'Vehicle Overheat'
+].sort((a, b) => a.localeCompare(b));
+
+const LOCATIONS = [
+  'Bayville NJ', 'Blooming Grove', 'Boro Park', 'BQE', 'Brick', 'Bronx',
+  'Elizabeth, NJ', 'Fallsburg', 'FDR', 'Flatbush', 'Highland Mills', 'Howell',
+  'HRD @ GWB', 'I-95, Connecticut', 'Interstate', 'Inwood', 'Jackson',
+  'Jersey City', 'KJ', 'Kissimmee, FL', 'Lakewood', 'Linden', 'Lower Manhattan',
+  'Manhattan', 'Middletown', 'Millstone Township', 'Monroe', 'Monticello',
+  'Montreal', 'NJ-4', 'NY Thruway', 'NY-17', 'NYC', 'NYS Thruway',
+  'Oakhurst NJ', 'Perth Amboy', 'Prospect Expressway', 'Rockland',
+  'South Fallsburg', 'Stamford Hill - London', 'Staten Island', 'Swan Lake',
+  'Tinton Falls NJ', 'Toms River', 'US-6', 'Wall Township', 'Williamsburg',
+  'Woodbury', 'Woodridge'
+].sort((a, b) => a.localeCompare(b));
+
+function setupAutocomplete(inputEl, listEl, allOptions, pinnedFirst) {
+  let activeIndex = -1;
+
+  function getOptions(query) {
+    if (!query) {
+      // empty field: pinned items first (if any), then the rest alphabetically
+      if (pinnedFirst && pinnedFirst.length) {
+        return [...pinnedFirst, ...allOptions.filter(o => !pinnedFirst.includes(o))];
+      }
+      return allOptions;
+    }
+    // while typing: plain alphabetical match, no pinning
+    const q = query.toLowerCase();
+    return allOptions.filter(o => o.toLowerCase().includes(q)).sort((a, b) => a.localeCompare(b));
+  }
+
+  function render() {
+    const options = getOptions(inputEl.value.trim());
+    listEl.innerHTML = '';
+    activeIndex = -1;
+    if (!options.length) {
+      listEl.classList.remove('open');
+      return;
+    }
+    options.forEach(opt => {
+      const item = document.createElement('div');
+      item.className = 'autocompleteItem';
+      item.textContent = opt;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // keep focus so blur doesn't close before click registers
+        inputEl.value = opt;
+        listEl.classList.remove('open');
+        inputEl.dispatchEvent(new Event('input')); // trigger live preview update
+      });
+      listEl.appendChild(item);
+    });
+    listEl.classList.add('open');
+  }
+
+  inputEl.addEventListener('focus', render);
+  inputEl.addEventListener('input', render);
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => listEl.classList.remove('open'), 100);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    const items = listEl.querySelectorAll('.autocompleteItem');
+    if (!listEl.classList.contains('open') || !items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      items[activeIndex].dispatchEvent(new Event('mousedown'));
+      return;
+    } else if (e.key === 'Escape') {
+      listEl.classList.remove('open');
+      return;
+    } else {
+      return;
+    }
+    items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+    items[activeIndex].scrollIntoView({ block: 'nearest' });
+  });
+}
+
+setupAutocomplete(
+  document.getElementById('conditionInput'),
+  document.getElementById('conditionList'),
+  [...CONDITIONS_PINNED, ...CONDITIONS_REST],
+  CONDITIONS_PINNED
+);
+setupAutocomplete(
+  document.getElementById('locationInput'),
+  document.getElementById('locationList'),
+  LOCATIONS,
+  null
+);
+
 
 function drawRoundedRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
