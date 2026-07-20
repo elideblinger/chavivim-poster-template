@@ -657,13 +657,30 @@ async function renderVideoFinalWebCodecs() {
   const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource, QUALITY_HIGH, Input, ALL_FORMATS, BlobSource, AudioBufferSink } =
     await import('https://esm.sh/mediabunny');
 
-  const w = Math.round(CANVAS_W / 2) * 2; // must be even for h264
-  const h = Math.round(CANVAS_H / 2) * 2;
+  const idealW = Math.round(CANVAS_W / 2) * 2; // must be even for h264
+  const idealH = Math.round(CANVAS_H / 2) * 2;
+
+  // Hardware video encoders have a real ceiling on frame size -- going past
+  // it is *why* this was crashing (and also why files were needlessly huge,
+  // since none of those extra pixels added visible detail beyond what the
+  // source video actually had). 1920 on the long side is safely within what
+  // virtually every phone's hardware encoder supports.
+  const MAX_DIM = 1920;
+  const longSide = Math.max(idealW, idealH);
+  const downscale = longSide > MAX_DIM ? MAX_DIM / longSide : 1;
+  const w = Math.round((idealW * downscale) / 2) * 2;
+  const h = Math.round((idealH * downscale) / 2) * 2;
 
   const workCanvas = document.createElement('canvas');
   workCanvas.width = w;
   workCanvas.height = h;
   const workCtx = workCanvas.getContext('2d');
+  // Everything below still draws using the original CANVAS_W/CANVAS_H
+  // coordinate space (same border thickness, logo size, text size, all in
+  // the same proportions as before) -- this transform maps that design onto
+  // the (possibly smaller) physical canvas without changing how anything
+  // looks relative to the frame.
+  workCtx.scale(w / CANVAS_W, h / CANVAS_H);
 
   // Just check whether the file has a decodable audio track -- the actual
   // heavy decoding of it is deferred until AFTER video capture finishes
@@ -723,7 +740,7 @@ async function renderVideoFinalWebCodecs() {
     await seekTo(t);
 
     workCtx.fillStyle = BORDER_COLOR;
-    workCtx.fillRect(0, 0, w, h);
+    workCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     workCtx.save();
     drawRoundedRectPath(workCtx, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h, CORNER_R);
     workCtx.clip();
