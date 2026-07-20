@@ -497,6 +497,7 @@ const LOCATIONS = [
 
 function setupAutocomplete(inputEl, listEl, allOptions, pinnedFirst) {
   let activeIndex = -1;
+  let suppressRender = false;
 
   function getOptions(query) {
     if (!query) {
@@ -512,6 +513,7 @@ function setupAutocomplete(inputEl, listEl, allOptions, pinnedFirst) {
   }
 
   function render() {
+    if (suppressRender) { suppressRender = false; return; }
     const options = getOptions(inputEl.value.trim());
     listEl.innerHTML = '';
     activeIndex = -1;
@@ -527,6 +529,7 @@ function setupAutocomplete(inputEl, listEl, allOptions, pinnedFirst) {
         e.preventDefault(); // keep focus so blur doesn't close before click registers
         inputEl.value = opt;
         listEl.classList.remove('open');
+        suppressRender = true; // don't let the synthetic input event below reopen the list
         inputEl.dispatchEvent(new Event('input')); // trigger live preview update
       });
       listEl.appendChild(item);
