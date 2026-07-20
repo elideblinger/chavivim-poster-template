@@ -57,6 +57,45 @@
     text-align:center;
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
+  #videoPreviewWrap {
+    position: relative;
+    container-type: inline-size;
+    background: #F0B02B;
+    box-sizing: border-box;
+    padding: 3.5616% 3.5616% 15.2055% 3.5616%; /* top/left/right = border, bottom = text strip -- fixed ratios, see geometry notes */
+  }
+  #videoPreviewEl {
+    width: 100%; height: 100%;
+    display: block;
+    object-fit: fill;
+    border-radius: 4.6575%;
+  }
+  #videoOverlayRing {
+    position: absolute;
+    left: 50%; width: 23.5828%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #333333;
+    top: var(--logo-top-pct, 92%);
+    transform: translate(-50%, -50%);
+  }
+  #videoOverlayLogo {
+    position: absolute;
+    left: 50%; width: 24.9315%; height: auto;
+    top: var(--logo-top-pct, 92%);
+    transform: translate(-48.5436%, -48.3607%);
+  }
+  .videoTextCol {
+    position: absolute;
+    top: var(--logo-top-pct, 92%); bottom: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    font-family: 'Poppins', sans-serif; font-weight: 700; color: #333333;
+    font-size: 3.0137cqw; line-height: 1.3;
+    overflow: hidden;
+  }
+  #videoOverlayLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
+  .videoTextColRight { right: 5.4795%; width: 31.3593%; align-items: flex-end; text-align: right; }
+  .videoTextLine:empty { display: none; }
   #livePreviewCanvas { display:block; width:100%; height:auto; }
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .autocompleteWrap { position: relative; }
@@ -130,8 +169,18 @@
   </div>
   <div id="videoPreviewWrap" style="display:none;">
     <video id="videoPreviewEl" src="" muted playsinline controls></video>
+    <div id="videoOverlayRing"></div>
+    <img id="videoOverlayLogo" src="">
+    <div id="videoOverlayLeft" class="videoTextCol">
+      <div id="videoOverlayLocation" class="videoTextLine"></div>
+      <div id="videoOverlayCondition" class="videoTextLine"></div>
+    </div>
+    <div id="videoOverlayRight" class="videoTextCol videoTextColRight">
+      <div id="videoOverlayHeader" class="videoTextLine"></div>
+      <div id="videoOverlayUnits" class="videoTextLine"></div>
+    </div>
   </div>
-  <p class="hint" id="videoHint" style="display:none;">the final border/logo/text only appear after you hit Create</p>
+  <p class="hint" id="videoHint" style="display:none;">this is a live preview -- the video itself only gets processed after you hit Create</p>
   <p class="hint">the border adapts to fit your photo/video -- nothing gets cropped</p>
 
   <label>Location</label>
@@ -224,6 +273,8 @@ mediaInput.addEventListener('change', (e) => {
       videoPreviewWrap.style.display = '';
       photoPreviewWrap.style.display = 'none';
       document.getElementById('videoHint').style.display = '';
+      updateVideoOverlayGeometry();
+      updateVideoOverlayText();
       step1.classList.remove('active');
       step2.classList.add('active');
     };
@@ -279,6 +330,26 @@ function computeGeometry(w, h) {
   LOGO_CY = CUTOUT.y + CUTOUT.h; // logo center sits exactly on the photo's bottom edge
 }
 
+// -- live preview overlay for video: mirrors the real render's geometry
+// exactly (border/logo/text positioned using the same formulas as the
+// canvas renderer), but as a lightweight CSS overlay on top of the raw
+// video player, since we can't burn in a live preview without re-encoding.
+document.getElementById('videoOverlayLogo').src = LOGO_SRC;
+
+function updateVideoOverlayGeometry() {
+  if (!CUTOUT) return;
+  const stripTopPct = (CUTOUT.y + CUTOUT.h) / CANVAS_H * 100;
+  videoPreviewWrap.style.setProperty('--logo-top-pct', stripTopPct + '%');
+  videoPreviewWrap.style.aspectRatio = `${CANVAS_W} / ${CANVAS_H}`;
+}
+
+function updateVideoOverlayText() {
+  document.getElementById('videoOverlayLocation').textContent = document.getElementById('locationInput').value || '';
+  document.getElementById('videoOverlayCondition').textContent = document.getElementById('conditionInput').value || '';
+  document.getElementById('videoOverlayHeader').textContent = document.getElementById('headerInput').value || '';
+  document.getElementById('videoOverlayUnits').textContent = getUnitsText();
+}
+
 // -- live preview: re-render on every keystroke --
 const liveInputs = ['locationInput','conditionInput','headerInput','unitsInput'].map(id => document.getElementById(id));
 let liveTimer = null;
@@ -286,6 +357,7 @@ function scheduleLivePreview() {
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
     if (mode === 'photo' && CUTOUT) renderPhotoFinal();
+    if (mode === 'video' && CUTOUT) updateVideoOverlayText();
   }, 100);
 }
 liveInputs.forEach(el => el.addEventListener('input', scheduleLivePreview));
