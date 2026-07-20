@@ -185,40 +185,6 @@ const BORDER_COLOR = '#F0B02B';
 const LOGO_W = 182*SCALE;
 const LOGO_RING_CX_IMG = 373.3, LOGO_RING_CY_IMG = 383.5, LOGO_RING_DIAM_IMG = 727.4;
 
-// -- location/condition autocomplete data, pulled from real dispatch history --
-const LOCATIONS_ALPHA = ["BP", "BQE", "Bayville NJ", "Blooming Grove", "Bloomingburg", "Boro Park", "Brick", "Bronx", "Bushwick", "Canarsie", "Cape May NJ", "Crown Heights", "Downtown Brooklyn", "Elizabeth, NJ", "Ellenville", "FDR", "Fallsburg", "Flatbush", "HRD @ GWB", "Hamilton Ave", "Harris", "Highland Mills", "Hillburn", "Howell", "Hurleyville", "I-195", "I-87", "I-95, Connecticut", "Interstate", "Interstate Canada", "Inwood", "JFK Airport", "Jackson", "Jersey City", "KJ", "Kauneonga Lake", "Kerestir", "Kissimmee, FL", "Lakewood", "Liberty", "Lincoln Tunnel", "Linden", "Loch Sheldrake", "Lower Manhattan", "M11 - London", "Manhattan", "Middletown", "Milford, CT", "Millstone Township", "Monroe", "Monticello", "Montreal", "NJ Turnpike", "NJ-4", "NY Thruway", "NY-17", "NYC", "NYS Thruway", "New Square", "Oakhurst NJ", "Orlando", "Parksville", "Perth Amboy", "Prospect Exp", "Prospect Expressway", "RFK Bridge", "Rockland", "Rockland Chavivim", "Sheepshead Bay", "South Brunswick", "South Fallsburg", "Stamford Hill - London", "Staten Island", "Swan Lake", "Swan Lake - Moments Before The Zman", "Tampa", "Tinton Falls NJ", "Tokaj", "Toms River", "UCLH Hospital - London", "US-6", "Wall Township", "Williamsburg", "Woodbourn", "Woodbourne", "Woodbury", "Woodridge"];
-const CONDITIONS_ALPHA = ["Ambulance Stalled", "Animal Condition", "Assist A Caller", "Battery Reset", "Blowout", "Boiler Issue", "Boost", "Bus Boost", "Bus Stalled", "Car Not Starting", "Car Stalled", "Car Stalled - Blocking Traffic", "Car Stalled Blocking Traffic", "Chop A Lock", "Door Jammed", "Double Blowout", "Elevator Stuck", "Flat Tire", "Flooding Condition", "Gas Smell", "Item Fell Into A Mikvah", "Lockout", "Multiple Flooding Conditions", "Out Of Battery", "Out Of Gas", "Out Of Gas - Blocking Traffic", "Power Outage", "Recovered Expensive Item", "Residential Door Jammed", "Residential Lockout", "Residential Lockout Person Involved", "Retrieve A Item", "Retrieve Item In Drain", "Secure A Bumper", "Stuck In A Ditch", "Stuck In Ditch", "Stuck In Mud", "Stuck On A Curb", "Traffic Control", "Trailer Lockout", "Tree Down", "Truck Boost", "Truck Lockout", "Truck Stalled Blocking Traffic", "Vehicle Lockout", "Vehicle Overheat", "Water Gushing"];
-const CONDITIONS_TOP = ['Flat Tire', 'Blowout', 'Boost', 'Out Of Gas'];
-const CONDITIONS_DEFAULT = CONDITIONS_TOP.concat(CONDITIONS_ALPHA.filter(c => !CONDITIONS_TOP.includes(c)));
-
-function renderDatalist(id, items) {
-  const dl = document.getElementById(id);
-  dl.innerHTML = '';
-  for (const item of items) {
-    const opt = document.createElement('option');
-    opt.value = item;
-    dl.appendChild(opt);
-  }
-}
-
-// Location: always alphabetical, both closed and while typing.
-renderDatalist('locationsDatalist', LOCATIONS_ALPHA);
-
-// Condition: shows the 4 most common first (then alphabetical) when the
-// field is empty/just focused, but switches to purely alphabetical as soon
-// as you start typing.
-const conditionInputEl = document.getElementById('conditionInput');
-function updateConditionDatalist() {
-  if (!conditionInputEl.value) {
-    renderDatalist('conditionsDatalist', CONDITIONS_DEFAULT);
-  } else {
-    renderDatalist('conditionsDatalist', CONDITIONS_ALPHA);
-  }
-}
-updateConditionDatalist();
-conditionInputEl.addEventListener('focus', updateConditionDatalist);
-conditionInputEl.addEventListener('input', updateConditionDatalist);
-
 let mode = 'photo'; // 'photo' | 'video'
 let photoImg = new Image();
 let logoImg = new Image();
