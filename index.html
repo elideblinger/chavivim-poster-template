@@ -270,7 +270,14 @@ document.getElementById('createBtn').addEventListener('click', async () => {
     step2.classList.remove('active');
     step3.classList.add('active');
   } else {
-    await renderVideoFinal();
+    try {
+      await renderVideoFinal();
+    } catch (err) {
+      console.error(err);
+      progressWrap.classList.add('active');
+      progressLabel.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+      document.getElementById('createBtn').disabled = false;
+    }
   }
 });
 
@@ -496,16 +503,7 @@ function renderPhotoFinal() {
 
 async function renderVideoFinal() {
   if (!videoFile) return;
-  const supportsWebCodecs = typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined' && window.Mp4Muxer;
-  if (supportsWebCodecs) {
-    try {
-      await renderVideoFinalWebCodecs();
-      return;
-    } catch (err) {
-      console.warn('WebCodecs path failed, falling back to server:', err);
-    }
-  }
-  await renderVideoFinalServer();
+  await renderVideoFinalWebCodecs(); // no fallback -- errors surface directly for debugging
 }
 
 // -- fast path: encodes on-device using the phone's hardware video chip.
