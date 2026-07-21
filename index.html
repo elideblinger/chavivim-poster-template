@@ -63,6 +63,12 @@
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
   #livePreviewCanvas { display:block; width:100%; height:auto; max-width:100%; margin-bottom: 10px; }
+  #ratioButtons { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .ratioBtn {
+    flex: 1 1 auto; width:auto; padding:8px 10px; font-size:13px;
+    background:#3a3a3a; color:#ccc;
+  }
+  .ratioBtn.active { background: var(--yellow); color:#222; }
   #cropperContainer { width: 100%; margin-bottom: 10px; }
   #videoPreviewWrap {
     position: relative;
@@ -179,6 +185,14 @@
       <button type="button" id="cropBtn" style="background:#444;color:#fff;">Crop</button>
     </div>
     <div id="photoCropSection" style="display:none;">
+      <div id="ratioButtons">
+        <button type="button" class="ratioBtn" data-ratio="NaN">Free</button>
+        <button type="button" class="ratioBtn" data-ratio="1">1:1</button>
+        <button type="button" class="ratioBtn" data-ratio="0.75">3:4</button>
+        <button type="button" class="ratioBtn" data-ratio="1.3333">4:3</button>
+        <button type="button" class="ratioBtn" data-ratio="0.5625">9:16</button>
+        <button type="button" class="ratioBtn" data-ratio="1.7778">16:9</button>
+      </div>
       <div id="cropperContainer">
         <img id="cropperImg">
       </div>
@@ -363,9 +377,13 @@ function showPhotoCropMode() {
   const fullH = photoImg.height || photoImg.naturalHeight;
   document.getElementById('cropperContainer').style.aspectRatio = `${fullW} / ${fullH}`;
 
+  document.querySelectorAll('.ratioBtn').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'NaN'));
+
   function setupCropperWithUrl(url) {
     cropperImgEl.src = url;
     cropperImgEl.onload = () => {
+      let initialCanvasData = null;
+      let refitTimer = null;
       cropperInstance = new Cropper(cropperImgEl, {
         viewMode: 1,
         dragMode: 'move',
@@ -376,6 +394,20 @@ function showPhotoCropMode() {
         cropBoxMovable: true,
         toggleDragModeOnDblclick: false,
         data: CROP_RECT ? { x: CROP_RECT.x, y: CROP_RECT.y, width: CROP_RECT.width, height: CROP_RECT.height } : undefined,
+        ready() {
+          initialCanvasData = cropperInstance.getCanvasData();
+        },
+        cropend() {
+          // a moment after you finish adjusting a handle, zoom back out so
+          // the whole photo is visible again -- the crop selection itself
+          // (in image coordinates) is unaffected by this, only the view
+          clearTimeout(refitTimer);
+          refitTimer = setTimeout(() => {
+            if (cropperInstance && initialCanvasData) {
+              cropperInstance.setCanvasData(initialCanvasData);
+            }
+          }, 400);
+        }
       });
     };
   }
@@ -392,6 +424,16 @@ function showPhotoCropMode() {
 }
 
 document.getElementById('cropBtn').addEventListener('click', showPhotoCropMode);
+
+document.querySelectorAll('.ratioBtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!cropperInstance) return;
+    document.querySelectorAll('.ratioBtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const ratio = parseFloat(btn.dataset.ratio); // NaN parses to NaN correctly, matching "free"
+    cropperInstance.setAspectRatio(ratio);
+  });
+});
 
 document.getElementById('cropDoneBtn').addEventListener('click', () => {
   if (cropperInstance) {
