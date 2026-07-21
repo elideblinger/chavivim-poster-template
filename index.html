@@ -62,8 +62,7 @@
     text-align: center;
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
-  #cropperOuter { box-sizing: border-box; padding: 3.5616% 3.5616% 15.2055% 3.5616%; }
-  #cropperContainer { width: 100%; }
+  #cropperContainer { width: 100%; margin-bottom: 10px; }
   #videoPreviewWrap {
     position: relative;
     container-type: inline-size;
@@ -103,12 +102,6 @@
   .videoTextColLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
   .videoTextColRight { right: 5.4795%; width: 31.3593%; align-items: flex-end; text-align: right; }
   .videoTextLine:empty { display: none; }
-
-  #cropperContainer { position: relative; }
-  #livePreviewCanvas { pointer-events: none; z-index: 1; }
-  .cropper-crop-box, .cropper-view-box, .cropper-face, .cropper-line, .cropper-point, .cropper-center {
-    z-index: 10;
-  }
 
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .autocompleteWrap { position: relative; }
@@ -180,11 +173,15 @@
 
 <div class="panel step" id="step2">
   <div id="photoPreviewWrap" style="display:none;">
-    <div id="cropperOuter">
+    <div id="photoViewSection">
+      <canvas id="livePreviewCanvas"></canvas>
+      <button type="button" id="cropBtn" style="background:#444;color:#fff;">Crop</button>
+    </div>
+    <div id="photoCropSection" style="display:none;">
       <div id="cropperContainer">
         <img id="cropperImg">
-        <canvas id="livePreviewCanvas" style="display:none; position:absolute;"></canvas>
       </div>
+      <button type="button" id="cropDoneBtn">Done</button>
     </div>
   </div>
   <div id="videoPreviewWrap" style="display:none;">
@@ -341,19 +338,28 @@ function showPhotoStep() {
   videoPreviewWrap.style.display = 'none';
   step1.classList.remove('active');
   step2.classList.add('active');
-  document.getElementById('cropperContainer').style.aspectRatio = `${fullW} / ${fullH}`;
-  initCropper();
+  showPhotoViewMode();
 }
 
-let cropperInstance = null;
-
-function initCropper() {
-  const cropperImgEl = document.getElementById('cropperImg');
-
+function showPhotoViewMode() {
+  document.getElementById('photoViewSection').style.display = '';
+  document.getElementById('photoCropSection').style.display = 'none';
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
   }
+  renderPhotoFinal(); // the exact same, unchanged render function
+}
+
+let cropperInstance = null;
+
+function showPhotoCropMode() {
+  document.getElementById('photoViewSection').style.display = 'none';
+  document.getElementById('photoCropSection').style.display = '';
+
+  const cropperImgEl = document.getElementById('cropperImg');
+  const fullW = photoImg.width || photoImg.naturalWidth;
+  const fullH = photoImg.height || photoImg.naturalHeight;
 
   function setupCropperWithUrl(url) {
     cropperImgEl.src = url;
@@ -367,14 +373,7 @@ function initCropper() {
         cropBoxResizable: true,
         cropBoxMovable: true,
         toggleDragModeOnDblclick: false,
-        background: false,
-        modal: false,
-        crop(event) {
-          scheduleBorderUpdate(event.detail);
-        },
-        ready() {
-          scheduleBorderUpdate(cropperInstance.getData());
-        }
+        data: CROP_RECT ? { x: CROP_RECT.x, y: CROP_RECT.y, width: CROP_RECT.width, height: CROP_RECT.height } : undefined,
       });
     };
   }
@@ -390,37 +389,18 @@ function initCropper() {
   }
 }
 
-// The real bordered preview (same untouched render function used
-// everywhere else) only reappears a moment AFTER you stop interacting --
-// while actively dragging/pinching you just see the plain crop tool, same
-// as it looked before any of this was merged into one view. Cropper itself
-// is left completely normal/untouched throughout; nothing about the border
-// drawing code is rebuilt or duplicated.
-let borderUpdateTimer = null;
-function scheduleBorderUpdate(detail) {
-  if (detail.width <= 0 || detail.height <= 0) return;
-  CROP_RECT = { x: detail.x, y: detail.y, width: detail.width, height: detail.height };
-  computeGeometry(detail.width, detail.height);
+document.getElementById('cropBtn').addEventListener('click', showPhotoCropMode);
 
-  clearTimeout(borderUpdateTimer);
-  borderUpdateTimer = setTimeout(() => {
-    if (!cropperInstance) return;
-    const bd = cropperInstance.getCropBoxData(); // fresh, one-time measurement
-    const canvas = document.getElementById('livePreviewCanvas');
-    // bd represents where the PHOTO itself should sit (the crop box the
-    // user is dragging) -- the border needs to extend outward beyond it,
-    // not be carved out of it. Scale so CUTOUT (the photo area within the
-    // full poster) lines up exactly with bd, then position the whole
-    // (larger) poster canvas so that same alignment holds.
-    const scale = bd.width / CUTOUT.w;
-    canvas.style.width = (CANVAS_W * scale) + 'px';
-    canvas.style.height = (CANVAS_H * scale) + 'px';
-    canvas.style.left = (bd.left - CUTOUT.x * scale) + 'px';
-    canvas.style.top = (bd.top - CUTOUT.y * scale) + 'px';
-    renderPhotoFinal(); // the exact same, unchanged render function
-    canvas.style.display = '';
-  }, 250);
-}
+document.getElementById('cropDoneBtn').addEventListener('click', () => {
+  if (cropperInstance) {
+    const d = cropperInstance.getData();
+    if (d.width > 0 && d.height > 0) {
+      CROP_RECT = { x: d.x, y: d.y, width: d.width, height: d.height };
+      computeGeometry(d.width, d.height);
+    }
+  }
+  showPhotoViewMode();
+});
 
 function computeGeometry(w, h) {
   const innerH = INNER_W * (h / w);
@@ -457,7 +437,7 @@ let liveTimer = null;
 function scheduleLivePreview() {
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
-    if (mode === 'photo' && CUTOUT && document.getElementById('livePreviewCanvas').style.display !== 'none') renderPhotoFinal();
+    if (mode === 'photo' && CUTOUT && document.getElementById('photoViewSection').style.display !== 'none') renderPhotoFinal();
     if (mode === 'video' && CUTOUT) updateVideoOverlayText();
   }, 100);
 }
