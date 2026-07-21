@@ -486,27 +486,46 @@ renderUnitsChips(); // set correct empty-state header on load
 // Built from the real frequency counts in the group's WhatsApp history.
 const CONDITIONS_PINNED = ['Flat Tire', 'Blowout', 'Boost', 'Out of Gas'];
 const CONDITIONS_REST = [
-  'Animal Condition', 'Assist a Caller', 'Battery Reset', 'Car Not Starting',
-  'Car Stalled', 'Car Stalled Blocking Traffic', 'Chop a Lock', 'Double Blowout',
-  'Elevator Stuck', 'Flooding Condition', 'Gas Smell', 'Lockout',
-  'Out of Battery', 'Out of Gas - Blocking Traffic', 'Residential Door Jammed',
-  'Residential Lockout', 'Retrieve Item in Drain', 'Secure a Bumper',
-  'Stuck in a Ditch', 'Stuck in Ditch', 'Stuck in Mud', 'Traffic Control',
-  'Trailer Lockout', 'Tree Down', 'Truck Lockout', 'Vehicle Lockout',
-  'Vehicle Overheat'
+  'Alarm', 'Animal Condition', 'Assault in Progress', 'Assault in the Past',
+  'Assist a Caller', 'Battery Reset', 'Burglary in Progress', 'Car Not Starting',
+  'Car Stalled', 'Car Stalled Blocking Traffic', 'Car Stolen', 'Check Cameras',
+  'Chop a Lock', 'Clogged Street Drain', 'CO Detector', 'Dangerous Condition',
+  'Deliver Equipment', 'Detail', 'Disconnect/Reconnect Battery',
+  'Double Blowout', 'Elevator Stuck', 'Engine Light', 'Extra Mile Call',
+  'Flooding Condition', 'Fuse Removal', 'Gas Smell', 'Heat Down',
+  'Item in Drain', 'Item Stolen', 'Key Stuck in Ignition', 'Lift Assist',
+  'Lockout', 'Loose Dog', 'Lost Item', 'Low Tire', 'Missing Person',
+  'Object Stuck Under Car', 'Other', 'Out of Battery',
+  'Out of Gas - Blocking Traffic', 'Past Burglary', 'Pick Up Equipment',
+  'Post MVA', 'Residential Door Jammed', 'Residential Lockout',
+  'Residential Lockout Person Involved', 'Retrieve a Drone', 'Retrieve Item',
+  'Retrieve Item in Drain', 'Retrieve Item in Trash', 'Search',
+  'Seatbelt Stuck', 'Secure a Bumper', 'Stuck in a Ditch', 'Stuck in Ditch',
+  'Stuck in Mud', 'Stuck in Snow', 'Stuck on Curb', 'Stuck on Ice',
+  'Suspicious Person', 'Traffic Control', 'Trailer Lockout', 'Transport / Items',
+  'Transportation / Rides', 'Tree Down', 'Truck Lockout', 'Vehicle Door Jammed',
+  'Vehicle Lockout', 'Vehicle Lockout Person Involved', 'Vehicle Overheat',
+  'Vehicle Smoking', 'Water Gushing'
 ].sort((a, b) => a.localeCompare(b));
 
 const LOCATIONS = [
-  'Bayville NJ', 'Blooming Grove', 'Boro Park', 'BQE', 'Brick', 'Bronx',
-  'Elizabeth, NJ', 'Fallsburg', 'FDR', 'Flatbush', 'Highland Mills', 'Howell',
-  'HRD @ GWB', 'I-95, Connecticut', 'Interstate', 'Inwood', 'Jackson',
-  'Jersey City', 'KJ', 'Kissimmee, FL', 'Lakewood', 'Linden', 'Lower Manhattan',
-  'Manhattan', 'Middletown', 'Millstone Township', 'Monroe', 'Monticello',
-  'Montreal', 'NJ-4', 'NY Thruway', 'NY-17', 'NYC', 'NYS Thruway',
-  'Oakhurst NJ', 'Perth Amboy', 'Prospect Expressway', 'Rockland',
-  'South Fallsburg', 'Stamford Hill - London', 'Staten Island', 'Swan Lake',
-  'Tinton Falls NJ', 'Toms River', 'US-6', 'Wall Township', 'Williamsburg',
-  'Woodbury', 'Woodridge'
+  'Bayville NJ', 'Blooming Grove', 'Bloomingburg', 'Boro Park', 'BQE', 'Brick',
+  'Bronx', 'Bushwick', 'Canarsie', 'Cape May NJ', 'Crown Heights',
+  'Downtown Brooklyn', 'Elizabeth, NJ', 'Ellenville', 'Fallsburg', 'FDR',
+  'Flatbush', 'Hamilton Ave', 'Harris', 'Highland Mills', 'Hillburn', 'Howell',
+  'HRD @ GWB', 'Hurleyville', 'I-87', 'I-95, Connecticut', 'I-195',
+  'Interstate', 'Interstate Canada', 'Inwood', 'Jackson', 'Jersey City',
+  'JFK Airport', 'Kauneonga Lake', 'Kerestir', 'KJ', 'Kissimmee, FL',
+  'Lakewood', 'Liberty', 'Lincoln Tunnel', 'Linden', 'Loch Sheldrake',
+  'Lower Manhattan', 'M11 - London', 'Manhattan', 'Middletown',
+  'Milford, CT', 'Millstone Township', 'Monroe', 'Monticello', 'Montreal',
+  'New Square', 'NJ Turnpike', 'NJ-4', 'NY Thruway', 'NY-17', 'NYC',
+  'NYS Thruway', 'Oakhurst NJ', 'Orlando', 'Parksville', 'Perth Amboy',
+  'Prospect Expressway', 'RFK Bridge', 'Rockland', 'Sheepshead Bay',
+  'South Brunswick', 'South Fallsburg', 'Stamford Hill - London',
+  'Staten Island', 'Swan Lake', 'Tampa', 'Tinton Falls NJ', 'Tokaj',
+  'Toms River', 'UCLH Hospital - London', 'US-6', 'Wall Township',
+  'Williamsburg', 'Woodbourne', 'Woodbury', 'Woodridge'
 ].sort((a, b) => a.localeCompare(b));
 
 function setupAutocomplete(inputEl, listEl, allOptions, pinnedFirst) {
