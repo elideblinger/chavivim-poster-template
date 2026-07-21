@@ -393,20 +393,35 @@ function buildCroppie() {
   const photoRatio = fullW / fullH;
   const ratio = currentRatio === 'original' ? photoRatio : parseFloat(currentRatio);
 
-  // boundary = the visible working area (fixed to the panel's actual width);
-  // viewport = the fixed crop window inside it, sized to the chosen ratio --
-  // this window never moves or resizes itself; only the photo underneath it
-  // zooms/pans, which is what keeps this feeling solid instead of glitchy.
-  const boundaryW = container.clientWidth;
+  // boundary = the visible working area -- reserved margin on BOTH axes
+  // (previously only vertical had spare room, which is why resizing
+  // sideways could reach the true screen edge but resizing down couldn't)
+  const boundaryW = Math.round(container.clientWidth * 0.9);
   const boundaryH = Math.round(boundaryW * 1.1);
-  let viewportW, viewportH;
+
+  // viewport = the fixed crop window inside it, sized to the chosen ratio.
+  // Rounding each dimension separately (and deriving one FROM the already
+  // -rounded other) was compounding into a small mismatch between the
+  // viewport's actual shape and the photo's real shape -- which is why
+  // "Original" wasn't landing on a true, uncropped fit. Computing both in
+  // full precision first and rounding once, at the end, fixes that.
+  let rawViewportW, rawViewportH;
   if (ratio >= 1) {
-    viewportW = Math.round(boundaryW * 0.9);
-    viewportH = Math.round(viewportW / ratio);
+    rawViewportW = boundaryW * 0.9;
+    rawViewportH = rawViewportW / ratio;
   } else {
-    viewportH = Math.round(boundaryH * 0.9);
-    viewportW = Math.round(viewportH * ratio);
+    rawViewportH = boundaryH * 0.9;
+    rawViewportW = rawViewportH * ratio;
   }
+  const viewportW = Math.round(rawViewportW);
+  const viewportH = Math.round(rawViewportH);
+
+  // Croppie's default max zoom is tied to the photo's raw pixel resolution,
+  // which is why different photos let you zoom in by different amounts.
+  // Computing min/max explicitly, as a fixed multiplier of each other,
+  // makes it consistent for any photo at a given crop shape instead.
+  const minZoom = Math.max(viewportW / fullW, viewportH / fullH);
+  const maxZoom = minZoom * 8;
 
   croppieInstance = new Croppie(container, {
     viewport: { width: viewportW, height: viewportH, type: 'square' },
@@ -415,7 +430,9 @@ function buildCroppie() {
     enableZoom: true,
     enableResize: true,
     enableOrientation: true,
-    mouseWheelZoom: true
+    mouseWheelZoom: true,
+    minZoom: minZoom,
+    maxZoom: maxZoom
   });
 
   // Use the original uploaded file's own URL directly -- no canvas pixel
