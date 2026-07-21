@@ -99,17 +99,6 @@
   .videoTextLine:empty { display: none; }
 
   #cropperContainer { position: relative; }
-  #cropOverlay {
-    position: absolute;
-    pointer-events: none;
-    container-type: inline-size;
-    z-index: 100;
-  }
-  .cropBar { position: absolute; background: #F0B02B; }
-  #cropBarTop { top: 0; left: 0; right: 0; }
-  #cropBarBottom { bottom: 0; left: 0; right: 0; }
-  #cropBarLeft { top: 0; bottom: 0; left: 0; width: 3.5616%; }
-  #cropBarRight { top: 0; bottom: 0; right: 0; width: 3.5616%; }
 
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .autocompleteWrap { position: relative; }
@@ -184,25 +173,8 @@
     <p class="hint">pinch/drag to zoom, drag the handles to crop -- the border updates a moment after you stop</p>
     <div id="cropperContainer">
       <img id="cropperImg">
-      <div id="cropOverlay">
-        <div class="cropBar" id="cropBarTop"></div>
-        <div class="cropBar" id="cropBarBottom">
-          <div class="overlayRing"></div>
-          <img class="overlayLogo" id="cropOverlayLogo" src="">
-          <div class="videoTextCol videoTextColLeft">
-            <div id="cropOverlayLocation" class="videoTextLine"></div>
-            <div id="cropOverlayCondition" class="videoTextLine"></div>
-          </div>
-          <div class="videoTextCol videoTextColRight">
-            <div id="cropOverlayHeader" class="videoTextLine"></div>
-            <div id="cropOverlayUnits" class="videoTextLine"></div>
-          </div>
-        </div>
-        <div class="cropBar" id="cropBarLeft"></div>
-        <div class="cropBar" id="cropBarRight"></div>
-      </div>
+      <canvas id="livePreviewCanvas" style="display:none; position:absolute;"></canvas>
     </div>
-    <canvas id="livePreviewCanvas" style="display:none;"></canvas>
   </div>
   <div id="videoPreviewWrap" style="display:none;">
     <video id="videoPreviewEl" src="" muted playsinline controls></video>
@@ -394,40 +366,34 @@ function initCropper() {
   };
 }
 
-// The border only redraws a moment AFTER you stop interacting, not on every
-// single frame while dragging/pinching -- continuous per-frame updates were
-// what caused the misalignment before. Cropper itself is left completely
-// normal/untouched throughout.
+// The real bordered preview (same untouched render function used
+// everywhere else) only reappears a moment AFTER you stop interacting --
+// while actively dragging/pinching you just see the plain crop tool, same
+// as it looked before any of this was merged into one view. Cropper itself
+// is left completely normal/untouched throughout; nothing about the border
+// drawing code is rebuilt or duplicated.
 let borderUpdateTimer = null;
 function scheduleBorderUpdate(detail) {
   if (detail.width <= 0 || detail.height <= 0) return;
   CROP_RECT = { x: detail.x, y: detail.y, width: detail.width, height: detail.height };
   computeGeometry(detail.width, detail.height);
 
+  // hide the bordered preview the instant something changes -- it'll
+  // reappear once things settle
+  document.getElementById('livePreviewCanvas').style.display = 'none';
+
   clearTimeout(borderUpdateTimer);
   borderUpdateTimer = setTimeout(() => {
     if (!cropperInstance) return;
     const bd = cropperInstance.getCropBoxData(); // fresh, one-time measurement
-    const overlay = document.getElementById('cropOverlay');
-    overlay.style.left = bd.left + 'px';
-    overlay.style.top = bd.top + 'px';
-    overlay.style.width = bd.width + 'px';
-    overlay.style.height = bd.height + 'px';
-
-    const borderPx = bd.width * 0.035616;
-    const stripPx = bd.width * 0.152055;
-    document.getElementById('cropBarTop').style.height = borderPx + 'px';
-    document.getElementById('cropBarBottom').style.height = stripPx + 'px';
-
-    updateCropOverlayText();
+    const canvas = document.getElementById('livePreviewCanvas');
+    canvas.style.left = bd.left + 'px';
+    canvas.style.top = bd.top + 'px';
+    canvas.style.width = bd.width + 'px';
+    canvas.style.height = bd.height + 'px';
+    renderPhotoFinal(); // the exact same, unchanged render function
+    canvas.style.display = '';
   }, 250);
-}
-
-function updateCropOverlayText() {
-  document.getElementById('cropOverlayLocation').textContent = document.getElementById('locationInput').value || '';
-  document.getElementById('cropOverlayCondition').textContent = document.getElementById('conditionInput').value || '';
-  document.getElementById('cropOverlayHeader').textContent = document.getElementById('headerInput').value || '';
-  document.getElementById('cropOverlayUnits').textContent = getUnitsText();
 }
 
 function computeGeometry(w, h) {
@@ -444,7 +410,6 @@ function computeGeometry(w, h) {
 // canvas renderer), but as a lightweight CSS overlay on top of the raw
 // video player, since we can't burn in a live preview without re-encoding.
 document.getElementById('videoOverlayLogo').src = LOGO_SRC;
-document.getElementById('cropOverlayLogo').src = LOGO_SRC;
 
 function updateVideoOverlayGeometry() {
   if (!CUTOUT) return;
@@ -466,7 +431,7 @@ let liveTimer = null;
 function scheduleLivePreview() {
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
-    if (mode === 'photo' && CUTOUT) updateCropOverlayText();
+    if (mode === 'photo' && CUTOUT && document.getElementById('livePreviewCanvas').style.display !== 'none') renderPhotoFinal();
     if (mode === 'video' && CUTOUT) updateVideoOverlayText();
   }, 100);
 }
