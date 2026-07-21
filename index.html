@@ -57,6 +57,8 @@
     text-align:center;
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
+  #cropperContainer { width: 100%; height: 340px; margin-bottom: 10px; background: #000; }
+  #cropperImg { display: block; max-width: 100%; }
   #videoPreviewWrap {
     position: relative;
     container-type: inline-size;
@@ -153,6 +155,8 @@
   #progressBarInner { background: var(--yellow); height:100%; width:0%; transition: width .2s; }
   #progressLabel { font-size:13px; color:#ccc; margin-top:8px; }
 </style>
+<link href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css" rel="stylesheet">
+<script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
 </head>
 <body>
 
@@ -165,6 +169,11 @@
 
 <div class="panel step" id="step2">
   <div id="photoPreviewWrap" style="display:none;">
+    <p class="hint">pinch/drag to zoom, drag the handles to crop</p>
+    <div id="cropperContainer">
+      <img id="cropperImg">
+    </div>
+    <p class="hint">preview with border</p>
     <canvas id="livePreviewCanvas"></canvas>
   </div>
   <div id="videoPreviewWrap" style="display:none;">
@@ -245,6 +254,8 @@ let videoW = 0, videoH = 0;
 let CUTOUT = null;   // { x, y, w, h }
 let CANVAS_W = 0, CANVAS_H = 0;
 let LOGO_CX = 0, LOGO_CY = 0;
+let CROP_RECT = null; // { x, y, width, height } -- in the photo's own natural pixel coords
+let cropperInstance = null;
 
 const mediaInput = document.getElementById('mediaInput');
 const photoPreviewWrap = document.getElementById('photoPreviewWrap');
@@ -313,12 +324,60 @@ async function loadPhotoFile(file) {
 }
 
 function showPhotoStep() {
-  computeGeometry(photoImg.width || photoImg.naturalWidth, photoImg.height || photoImg.naturalHeight);
+  const fullW = photoImg.width || photoImg.naturalWidth;
+  const fullH = photoImg.height || photoImg.naturalHeight;
+  CROP_RECT = { x: 0, y: 0, width: fullW, height: fullH };
+  computeGeometry(fullW, fullH);
   photoPreviewWrap.style.display = '';
   videoPreviewWrap.style.display = 'none';
   step1.classList.remove('active');
   step2.classList.add('active');
   renderPhotoFinal(); // live preview IS the real render -- no separate thumbnail path
+  initCropper();
+}
+
+function initCropper() {
+  const cropperImgEl = document.getElementById('cropperImg');
+  cropperImgEl.src = photoImg.toDataURL ? photoImg.toDataURL() : photoImg.src;
+
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+
+  cropperImgEl.onload = () => {
+    cropperInstance = new Cropper(cropperImgEl, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 1,
+      aspectRatio: NaN, // free -- user can resize to any ratio, not locked
+      zoomable: true,
+      cropBoxResizable: true,
+      cropBoxMovable: true,
+      toggleDragModeOnDblclick: false,
+      background: false,
+      crop(event) {
+        scheduleCropUpdate(event.detail);
+      }
+    });
+  };
+}
+
+let cropUpdatePending = false;
+let latestCropDetail = null;
+function scheduleCropUpdate(detail) {
+  latestCropDetail = detail;
+  if (cropUpdatePending) return;
+  cropUpdatePending = true;
+  requestAnimationFrame(() => {
+    cropUpdatePending = false;
+    if (!latestCropDetail) return;
+    const d = latestCropDetail;
+    if (d.width <= 0 || d.height <= 0) return; // ignore transient zero-size events
+    CROP_RECT = { x: d.x, y: d.y, width: d.width, height: d.height };
+    computeGeometry(d.width, d.height);
+    renderPhotoFinal();
+  });
 }
 
 function computeGeometry(w, h) {
@@ -402,6 +461,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   unitsList = [];
   renderUnitsChips();
   mediaInput.value = '';
+  if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
 });
 
 // -- units chip input --
@@ -748,7 +808,15 @@ function renderPhotoToCanvas(canvas) {
   ctx.save();
   drawRoundedRectPath(ctx, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h, CORNER_R);
   ctx.clip();
-  ctx.drawImage(photoImg, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h);
+  if (CROP_RECT) {
+    ctx.drawImage(
+      photoImg,
+      CROP_RECT.x, CROP_RECT.y, CROP_RECT.width, CROP_RECT.height,
+      CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h
+    );
+  } else {
+    ctx.drawImage(photoImg, CUTOUT.x, CUTOUT.y, CUTOUT.w, CUTOUT.h);
+  }
   ctx.restore();
 
   drawLogoAndText(ctx);
