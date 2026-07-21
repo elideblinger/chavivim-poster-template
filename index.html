@@ -344,32 +344,45 @@ let cropperInstance = null;
 
 function initCropper() {
   const cropperImgEl = document.getElementById('cropperImg');
-  cropperImgEl.src = photoImg.toDataURL ? photoImg.toDataURL() : photoImg.src;
 
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
   }
 
-  cropperImgEl.onload = () => {
-    cropperInstance = new Cropper(cropperImgEl, {
-      viewMode: 1,
-      dragMode: 'move',
-      autoCropArea: 1,
-      aspectRatio: NaN, // free -- any ratio, not locked
-      zoomable: true,
-      cropBoxResizable: true,
-      cropBoxMovable: true,
-      toggleDragModeOnDblclick: false,
-      background: false,
-      crop(event) {
-        scheduleBorderUpdate(event.detail);
-      },
-      ready() {
-        scheduleBorderUpdate(cropperInstance.getData());
-      }
-    });
-  };
+  function setupCropperWithUrl(url) {
+    cropperImgEl.src = url;
+    cropperImgEl.onload = () => {
+      cropperInstance = new Cropper(cropperImgEl, {
+        viewMode: 1,
+        dragMode: 'move',
+        autoCropArea: 1,
+        aspectRatio: NaN, // free -- any ratio, not locked
+        zoomable: true,
+        cropBoxResizable: true,
+        cropBoxMovable: true,
+        toggleDragModeOnDblclick: false,
+        background: false,
+        modal: false,
+        crop(event) {
+          scheduleBorderUpdate(event.detail);
+        },
+        ready() {
+          scheduleBorderUpdate(cropperInstance.getData());
+        }
+      });
+    };
+  }
+
+  if (photoImg.toBlob) {
+    // photoImg is a canvas (createImageBitmap path) -- toBlob is far lighter
+    // on mobile memory than a base64 data URI, which is what caused a
+    // black-image bug earlier in this project
+    photoImg.toBlob((blob) => setupCropperWithUrl(URL.createObjectURL(blob)));
+  } else {
+    // photoImg is an <img> (fallback path) -- it already has an object URL
+    setupCropperWithUrl(photoImg.src);
+  }
 }
 
 // The real bordered preview (same untouched render function used
