@@ -439,11 +439,12 @@ function buildCroppie() {
   // extraction involved to get the image in, unlike the old approach
   // (photoImg.toBlob()), which is very likely what a phone content-filter
   // was intercepting.
-  const bindOptions = { url: originalPhotoURL };
+  const bindOptions = { url: originalPhotoURL, zoom: minZoom };
   if (CROP_RECT && currentRatio === lastBoundRatio) {
     // restore the previous crop position if we're just re-entering crop
     // mode without having changed the ratio
     bindOptions.points = [CROP_RECT.x, CROP_RECT.y, CROP_RECT.x + CROP_RECT.width, CROP_RECT.y + CROP_RECT.height];
+    delete bindOptions.zoom; // let the restored points determine zoom instead
   }
   croppieInstance.bind(bindOptions);
   lastBoundRatio = currentRatio;
