@@ -387,10 +387,16 @@ function scheduleBorderUpdate(detail) {
     if (!cropperInstance) return;
     const bd = cropperInstance.getCropBoxData(); // fresh, one-time measurement
     const canvas = document.getElementById('livePreviewCanvas');
-    canvas.style.left = bd.left + 'px';
-    canvas.style.top = bd.top + 'px';
-    canvas.style.width = bd.width + 'px';
-    canvas.style.height = bd.height + 'px';
+    // bd represents where the PHOTO itself should sit (the crop box the
+    // user is dragging) -- the border needs to extend outward beyond it,
+    // not be carved out of it. Scale so CUTOUT (the photo area within the
+    // full poster) lines up exactly with bd, then position the whole
+    // (larger) poster canvas so that same alignment holds.
+    const scale = bd.width / CUTOUT.w;
+    canvas.style.width = (CANVAS_W * scale) + 'px';
+    canvas.style.height = (CANVAS_H * scale) + 'px';
+    canvas.style.left = (bd.left - CUTOUT.x * scale) + 'px';
+    canvas.style.top = (bd.top - CUTOUT.y * scale) + 'px';
     renderPhotoFinal(); // the exact same, unchanged render function
     canvas.style.display = '';
   }, 250);
