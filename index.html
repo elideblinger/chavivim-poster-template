@@ -316,7 +316,10 @@ mediaInput.addEventListener('change', (e) => {
   }
 });
 
+let originalPhotoURL = null; // the uploaded file's own URL -- no canvas involved at all
+
 async function loadPhotoFile(file) {
+  originalPhotoURL = URL.createObjectURL(file); // plain file->URL, zero pixel/canvas APIs touched
   try {
     if (window.createImageBitmap) {
       // createImageBitmap decodes off the main thread and correctly applies
@@ -335,13 +338,12 @@ async function loadPhotoFile(file) {
     console.warn('createImageBitmap failed, falling back:', err);
   }
   // fallback for older browsers / if createImageBitmap threw
-  const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => { photoImg = img; showPhotoStep(); };
   img.onerror = () => {
     alert('Could not load that photo -- try a different one.');
   };
-  img.src = url;
+  img.src = originalPhotoURL;
 }
 
 function showPhotoStep() {
@@ -412,15 +414,10 @@ function showPhotoCropMode() {
     };
   }
 
-  if (photoImg.toBlob) {
-    // photoImg is a canvas (createImageBitmap path) -- toBlob is far lighter
-    // on mobile memory than a base64 data URI, which is what caused a
-    // black-image bug earlier in this project
-    photoImg.toBlob((blob) => setupCropperWithUrl(URL.createObjectURL(blob)));
-  } else {
-    // photoImg is an <img> (fallback path) -- it already has an object URL
-    setupCropperWithUrl(photoImg.src);
-  }
+  // Use the original uploaded file's own URL directly -- no canvas pixel
+  // extraction involved at all, unlike the old approach (photoImg.toBlob()),
+  // which is very likely what a phone content-filter was intercepting.
+  setupCropperWithUrl(originalPhotoURL);
 }
 
 document.getElementById('cropBtn').addEventListener('click', showPhotoCropMode);
