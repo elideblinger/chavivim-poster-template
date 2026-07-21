@@ -57,6 +57,8 @@
     text-align:center;
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
+  #cropperContainer { width: 100%; height: 340px; margin-bottom: 10px; background: #000; }
+  #cropperImg { display: block; max-width: 100%; }
   #videoPreviewWrap {
     position: relative;
     container-type: inline-size;
@@ -70,7 +72,7 @@
     object-fit: fill;
     border-radius: 4.6575%;
   }
-  .overlayRing {
+  #videoOverlayRing {
     position: absolute;
     left: 50%; width: 23.5828%;
     aspect-ratio: 1;
@@ -79,7 +81,7 @@
     top: var(--logo-top-pct, 92%);
     transform: translate(-50%, -50%);
   }
-  .overlayLogo {
+  #videoOverlayLogo {
     position: absolute;
     left: 50%; width: 24.9315%; height: auto;
     top: var(--logo-top-pct, 92%);
@@ -93,10 +95,10 @@
     font-size: 3.0137cqw; line-height: 1.3;
     overflow: hidden;
   }
-  .videoTextColLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
+  #videoOverlayLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
   .videoTextColRight { right: 5.4795%; width: 31.3593%; align-items: flex-end; text-align: right; }
   .videoTextLine:empty { display: none; }
-
+  #livePreviewCanvas { display:block; width:100%; height:auto; }
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .autocompleteWrap { position: relative; }
   .autocompleteList {
@@ -153,6 +155,8 @@
   #progressBarInner { background: var(--yellow); height:100%; width:0%; transition: width .2s; }
   #progressLabel { font-size:13px; color:#ccc; margin-top:8px; }
 </style>
+<link href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css" rel="stylesheet">
+<script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
 </head>
 <body>
 
@@ -165,13 +169,18 @@
 
 <div class="panel step" id="step2">
   <div id="photoPreviewWrap" style="display:none;">
+    <p class="hint">pinch/drag to zoom, drag the handles to crop</p>
+    <div id="cropperContainer">
+      <img id="cropperImg">
+    </div>
+    <p class="hint">preview with border</p>
     <canvas id="livePreviewCanvas"></canvas>
   </div>
   <div id="videoPreviewWrap" style="display:none;">
     <video id="videoPreviewEl" src="" muted playsinline controls></video>
-    <div class="overlayRing" id="videoOverlayRing"></div>
-    <img class="overlayLogo" id="videoOverlayLogo" src="">
-    <div id="videoOverlayLeft" class="videoTextCol videoTextColLeft">
+    <div id="videoOverlayRing"></div>
+    <img id="videoOverlayLogo" src="">
+    <div id="videoOverlayLeft" class="videoTextCol">
       <div id="videoOverlayLocation" class="videoTextLine"></div>
       <div id="videoOverlayCondition" class="videoTextLine"></div>
     </div>
@@ -245,7 +254,8 @@ let videoW = 0, videoH = 0;
 let CUTOUT = null;   // { x, y, w, h }
 let CANVAS_W = 0, CANVAS_H = 0;
 let LOGO_CX = 0, LOGO_CY = 0;
-let CROP_RECT = null; // { x, y, width, height } -- source rect within the original photo, for zoom/pan
+let CROP_RECT = null; // { x, y, width, height } -- in the photo's own natural pixel coords
+let cropperInstance = null;
 
 const mediaInput = document.getElementById('mediaInput');
 const photoPreviewWrap = document.getElementById('photoPreviewWrap');
@@ -316,116 +326,58 @@ async function loadPhotoFile(file) {
 function showPhotoStep() {
   const fullW = photoImg.width || photoImg.naturalWidth;
   const fullH = photoImg.height || photoImg.naturalHeight;
-  CROP_RECT = { x: 0, y: 0, width: fullW, height: fullH }; // zoom=1, no pan
-  computeGeometry(fullW, fullH); // border/aspect-ratio decided once, from the full photo -- never changes from zoom/pan
+  CROP_RECT = { x: 0, y: 0, width: fullW, height: fullH };
+  computeGeometry(fullW, fullH);
   photoPreviewWrap.style.display = '';
   videoPreviewWrap.style.display = 'none';
   step1.classList.remove('active');
   step2.classList.add('active');
-  renderPhotoFinal();
-  initPhotoZoomPan();
+  renderPhotoFinal(); // live preview IS the real render -- no separate thumbnail path
+  initCropper();
 }
 
-// -- simple pinch-zoom / drag-to-pan on the live preview canvas --
-// This only changes which rectangle of the ORIGINAL photo gets drawn into
-// the existing (fixed) cutout -- it never changes the cutout's aspect ratio
-// or the border, so the border logic is completely untouched.
-let zoomScale = 1; // 1 = fully zoomed out (whole photo visible)
-let panX = 0.5, panY = 0.5; // center of the visible region, as a 0-1 fraction of the full photo
+function initCropper() {
+  const cropperImgEl = document.getElementById('cropperImg');
+  cropperImgEl.src = photoImg.toDataURL ? photoImg.toDataURL() : photoImg.src;
 
-function initPhotoZoomPan() {
-  zoomScale = 1;
-  panX = 0.5;
-  panY = 0.5;
-  updateCropRectFromZoomPan();
-
-  const canvas = document.getElementById('livePreviewCanvas');
-  if (canvas._zoomPanBound) return; // only wire up event listeners once
-  canvas._zoomPanBound = true;
-
-  let lastDist = null;
-  let lastPan = null;
-  let dragStart = null;
-
-  function getTouchDist(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.hypot(dx, dy);
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
   }
 
-  canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      lastDist = getTouchDist(e.touches);
-    } else if (e.touches.length === 1) {
-      dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY, panX, panY };
-    }
-  }, { passive: true });
-
-  canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2 && lastDist !== null) {
-      e.preventDefault();
-      const dist = getTouchDist(e.touches);
-      const factor = dist / lastDist;
-      zoomScale = Math.min(6, Math.max(1, zoomScale * factor));
-      lastDist = dist;
-      updateCropRectFromZoomPan();
-    } else if (e.touches.length === 1 && dragStart) {
-      e.preventDefault();
-      const dx = (e.touches[0].clientX - dragStart.x) / canvas.clientWidth;
-      const dy = (e.touches[0].clientY - dragStart.y) / canvas.clientHeight;
-      panX = dragStart.panX - dx / zoomScale;
-      panY = dragStart.panY - dy / zoomScale;
-      updateCropRectFromZoomPan();
-    }
-  }, { passive: false });
-
-  canvas.addEventListener('touchend', (e) => {
-    if (e.touches.length < 2) lastDist = null;
-    if (e.touches.length < 1) dragStart = null;
-  });
-
-  // desktop: mouse drag to pan, wheel to zoom
-  canvas.addEventListener('mousedown', (e) => {
-    dragStart = { x: e.clientX, y: e.clientY, panX, panY };
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragStart) return;
-    const dx = (e.clientX - dragStart.x) / canvas.clientWidth;
-    const dy = (e.clientY - dragStart.y) / canvas.clientHeight;
-    panX = dragStart.panX - dx / zoomScale;
-    panY = dragStart.panY - dy / zoomScale;
-    updateCropRectFromZoomPan();
-  });
-  window.addEventListener('mouseup', () => { dragStart = null; });
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    zoomScale = Math.min(6, Math.max(1, zoomScale * (e.deltaY < 0 ? 1.08 : 0.92)));
-    updateCropRectFromZoomPan();
-  }, { passive: false });
+  cropperImgEl.onload = () => {
+    cropperInstance = new Cropper(cropperImgEl, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 1,
+      aspectRatio: NaN, // free -- user can resize to any ratio, not locked
+      zoomable: true,
+      cropBoxResizable: true,
+      cropBoxMovable: true,
+      toggleDragModeOnDblclick: false,
+      background: false,
+      crop(event) {
+        scheduleCropUpdate(event.detail);
+      }
+    });
+  };
 }
 
-function updateCropRectFromZoomPan() {
-  const fullW = photoImg.width || photoImg.naturalWidth;
-  const fullH = photoImg.height || photoImg.naturalHeight;
-  // the cutout's aspect ratio is fixed (from computeGeometry using the full
-  // photo) -- zoom/pan only changes the size/position of the rectangle we
-  // sample from the original photo, keeping that same aspect ratio always
-  const aspect = CUTOUT.w / CUTOUT.h;
-
-  let cropH = fullH / zoomScale;
-  let cropW = cropH * aspect;
-  if (cropW > fullW) { cropW = fullW; cropH = cropW / aspect; }
-
-  panX = Math.min(1 - (cropW / fullW) / 2, Math.max((cropW / fullW) / 2, panX));
-  panY = Math.min(1 - (cropH / fullH) / 2, Math.max((cropH / fullH) / 2, panY));
-
-  CROP_RECT = {
-    x: panX * fullW - cropW / 2,
-    y: panY * fullH - cropH / 2,
-    width: cropW,
-    height: cropH
-  };
-  renderPhotoFinal();
+let cropUpdatePending = false;
+let latestCropDetail = null;
+function scheduleCropUpdate(detail) {
+  latestCropDetail = detail;
+  if (cropUpdatePending) return;
+  cropUpdatePending = true;
+  requestAnimationFrame(() => {
+    cropUpdatePending = false;
+    if (!latestCropDetail) return;
+    const d = latestCropDetail;
+    if (d.width <= 0 || d.height <= 0) return; // ignore transient zero-size events
+    CROP_RECT = { x: d.x, y: d.y, width: d.width, height: d.height };
+    computeGeometry(d.width, d.height);
+    renderPhotoFinal();
+  });
 }
 
 function computeGeometry(w, h) {
@@ -509,6 +461,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   unitsList = [];
   renderUnitsChips();
   mediaInput.value = '';
+  if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
 });
 
 // -- units chip input --
