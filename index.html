@@ -373,7 +373,11 @@ function showPhotoCropMode() {
   document.getElementById('photoViewSection').style.display = 'none';
   document.getElementById('photoCropSection').style.display = '';
   document.querySelectorAll('.ratioBtn').forEach(b => b.classList.toggle('active', b.dataset.ratio === currentRatio));
-  buildCroppie();
+  // wait a frame so the browser actually lays out the now-visible container
+  // before Croppie measures it -- building it in the same instant we reveal
+  // it was causing Croppie to grab stale/zero dimensions, which is what
+  // threw off the zoom slider and the resulting crop math
+  requestAnimationFrame(() => requestAnimationFrame(buildCroppie));
 }
 
 function buildCroppie() {
@@ -409,7 +413,7 @@ function buildCroppie() {
     boundary: { width: boundaryW, height: boundaryH },
     showZoomer: true,
     enableZoom: true,
-    enableResize: false,
+    enableResize: true,
     mouseWheelZoom: true
   });
 
