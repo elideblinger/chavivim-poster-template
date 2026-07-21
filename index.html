@@ -58,7 +58,6 @@
   }
   #photoPreviewWrap img, #videoPreviewWrap video { display:block; width:100%; height:auto; }
   #cropperContainer { width: 100%; height: 340px; margin-bottom: 10px; background: #000; }
-  #cropperImg { display: block; max-width: 100%; }
   #videoPreviewWrap {
     position: relative;
     container-type: inline-size;
@@ -72,7 +71,7 @@
     object-fit: fill;
     border-radius: 4.6575%;
   }
-  #videoOverlayRing {
+  .overlayRing {
     position: absolute;
     left: 50%; width: 23.5828%;
     aspect-ratio: 1;
@@ -81,7 +80,7 @@
     top: var(--logo-top-pct, 92%);
     transform: translate(-50%, -50%);
   }
-  #videoOverlayLogo {
+  .overlayLogo {
     position: absolute;
     left: 50%; width: 24.9315%; height: auto;
     top: var(--logo-top-pct, 92%);
@@ -95,10 +94,23 @@
     font-size: 3.0137cqw; line-height: 1.3;
     overflow: hidden;
   }
-  #videoOverlayLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
+  .videoTextColLeft { left: 6.1644%; width: 30.6744%; align-items: flex-start; text-align: left; }
   .videoTextColRight { right: 5.4795%; width: 31.3593%; align-items: flex-end; text-align: right; }
   .videoTextLine:empty { display: none; }
-  #livePreviewCanvas { display:block; width:100%; height:auto; }
+
+  #cropperContainer { position: relative; }
+  #cropOverlay {
+    position: absolute;
+    pointer-events: none;
+    container-type: inline-size;
+    z-index: 100;
+  }
+  .cropBar { position: absolute; background: #F0B02B; }
+  #cropBarTop { top: 0; left: 0; right: 0; }
+  #cropBarBottom { bottom: 0; left: 0; right: 0; }
+  #cropBarLeft { top: 0; bottom: 0; left: 0; width: 3.5616%; }
+  #cropBarRight { top: 0; bottom: 0; right: 0; width: 3.5616%; }
+
   .hint { font-size:12px; color:#999; text-align:center; margin:-6px 0 14px; }
   .autocompleteWrap { position: relative; }
   .autocompleteList {
@@ -169,18 +181,34 @@
 
 <div class="panel step" id="step2">
   <div id="photoPreviewWrap" style="display:none;">
-    <p class="hint">pinch/drag to zoom, drag the handles to crop</p>
+    <p class="hint">pinch/drag to zoom, drag the handles to crop -- the border updates a moment after you stop</p>
     <div id="cropperContainer">
       <img id="cropperImg">
+      <div id="cropOverlay">
+        <div class="cropBar" id="cropBarTop"></div>
+        <div class="cropBar" id="cropBarBottom">
+          <div class="overlayRing"></div>
+          <img class="overlayLogo" id="cropOverlayLogo" src="">
+          <div class="videoTextCol videoTextColLeft">
+            <div id="cropOverlayLocation" class="videoTextLine"></div>
+            <div id="cropOverlayCondition" class="videoTextLine"></div>
+          </div>
+          <div class="videoTextCol videoTextColRight">
+            <div id="cropOverlayHeader" class="videoTextLine"></div>
+            <div id="cropOverlayUnits" class="videoTextLine"></div>
+          </div>
+        </div>
+        <div class="cropBar" id="cropBarLeft"></div>
+        <div class="cropBar" id="cropBarRight"></div>
+      </div>
     </div>
-    <p class="hint">preview with border</p>
-    <canvas id="livePreviewCanvas"></canvas>
+    <canvas id="livePreviewCanvas" style="display:none;"></canvas>
   </div>
   <div id="videoPreviewWrap" style="display:none;">
     <video id="videoPreviewEl" src="" muted playsinline controls></video>
-    <div id="videoOverlayRing"></div>
-    <img id="videoOverlayLogo" src="">
-    <div id="videoOverlayLeft" class="videoTextCol">
+    <div class="overlayRing" id="videoOverlayRing"></div>
+    <img class="overlayLogo" id="videoOverlayLogo" src="">
+    <div id="videoOverlayLeft" class="videoTextCol videoTextColLeft">
       <div id="videoOverlayLocation" class="videoTextLine"></div>
       <div id="videoOverlayCondition" class="videoTextLine"></div>
     </div>
@@ -254,8 +282,7 @@ let videoW = 0, videoH = 0;
 let CUTOUT = null;   // { x, y, w, h }
 let CANVAS_W = 0, CANVAS_H = 0;
 let LOGO_CX = 0, LOGO_CY = 0;
-let CROP_RECT = null; // { x, y, width, height } -- in the photo's own natural pixel coords
-let cropperInstance = null;
+let CROP_RECT = null; // { x, y, width, height } -- source rect within the original photo, for zoom/pan
 
 const mediaInput = document.getElementById('mediaInput');
 const photoPreviewWrap = document.getElementById('photoPreviewWrap');
@@ -332,9 +359,10 @@ function showPhotoStep() {
   videoPreviewWrap.style.display = 'none';
   step1.classList.remove('active');
   step2.classList.add('active');
-  renderPhotoFinal(); // live preview IS the real render -- no separate thumbnail path
   initCropper();
 }
+
+let cropperInstance = null;
 
 function initCropper() {
   const cropperImgEl = document.getElementById('cropperImg');
@@ -350,34 +378,56 @@ function initCropper() {
       viewMode: 1,
       dragMode: 'move',
       autoCropArea: 1,
-      aspectRatio: NaN, // free -- user can resize to any ratio, not locked
+      aspectRatio: NaN, // free -- any ratio, not locked
       zoomable: true,
       cropBoxResizable: true,
       cropBoxMovable: true,
       toggleDragModeOnDblclick: false,
       background: false,
       crop(event) {
-        scheduleCropUpdate(event.detail);
+        scheduleBorderUpdate(event.detail);
+      },
+      ready() {
+        scheduleBorderUpdate(cropperInstance.getData());
       }
     });
   };
 }
 
-let cropUpdatePending = false;
-let latestCropDetail = null;
-function scheduleCropUpdate(detail) {
-  latestCropDetail = detail;
-  if (cropUpdatePending) return;
-  cropUpdatePending = true;
-  requestAnimationFrame(() => {
-    cropUpdatePending = false;
-    if (!latestCropDetail) return;
-    const d = latestCropDetail;
-    if (d.width <= 0 || d.height <= 0) return; // ignore transient zero-size events
-    CROP_RECT = { x: d.x, y: d.y, width: d.width, height: d.height };
-    computeGeometry(d.width, d.height);
-    renderPhotoFinal();
-  });
+// The border only redraws a moment AFTER you stop interacting, not on every
+// single frame while dragging/pinching -- continuous per-frame updates were
+// what caused the misalignment before. Cropper itself is left completely
+// normal/untouched throughout.
+let borderUpdateTimer = null;
+function scheduleBorderUpdate(detail) {
+  if (detail.width <= 0 || detail.height <= 0) return;
+  CROP_RECT = { x: detail.x, y: detail.y, width: detail.width, height: detail.height };
+  computeGeometry(detail.width, detail.height);
+
+  clearTimeout(borderUpdateTimer);
+  borderUpdateTimer = setTimeout(() => {
+    if (!cropperInstance) return;
+    const bd = cropperInstance.getCropBoxData(); // fresh, one-time measurement
+    const overlay = document.getElementById('cropOverlay');
+    overlay.style.left = bd.left + 'px';
+    overlay.style.top = bd.top + 'px';
+    overlay.style.width = bd.width + 'px';
+    overlay.style.height = bd.height + 'px';
+
+    const borderPx = bd.width * 0.035616;
+    const stripPx = bd.width * 0.152055;
+    document.getElementById('cropBarTop').style.height = borderPx + 'px';
+    document.getElementById('cropBarBottom').style.height = stripPx + 'px';
+
+    updateCropOverlayText();
+  }, 250);
+}
+
+function updateCropOverlayText() {
+  document.getElementById('cropOverlayLocation').textContent = document.getElementById('locationInput').value || '';
+  document.getElementById('cropOverlayCondition').textContent = document.getElementById('conditionInput').value || '';
+  document.getElementById('cropOverlayHeader').textContent = document.getElementById('headerInput').value || '';
+  document.getElementById('cropOverlayUnits').textContent = getUnitsText();
 }
 
 function computeGeometry(w, h) {
@@ -394,6 +444,7 @@ function computeGeometry(w, h) {
 // canvas renderer), but as a lightweight CSS overlay on top of the raw
 // video player, since we can't burn in a live preview without re-encoding.
 document.getElementById('videoOverlayLogo').src = LOGO_SRC;
+document.getElementById('cropOverlayLogo').src = LOGO_SRC;
 
 function updateVideoOverlayGeometry() {
   if (!CUTOUT) return;
@@ -415,7 +466,7 @@ let liveTimer = null;
 function scheduleLivePreview() {
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
-    if (mode === 'photo' && CUTOUT) renderPhotoFinal();
+    if (mode === 'photo' && CUTOUT) updateCropOverlayText();
     if (mode === 'video' && CUTOUT) updateVideoOverlayText();
   }, 100);
 }
