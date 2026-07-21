@@ -166,8 +166,8 @@
   #progressBarInner { background: var(--yellow); height:100%; width:0%; transition: width .2s; }
   #progressLabel { font-size:13px; color:#ccc; margin-top:8px; }
 </style>
-<link href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css" rel="stylesheet">
-<script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
+<link href="https://unpkg.com/croppie@2.6.5/croppie.css" rel="stylesheet">
+<script src="https://unpkg.com/croppie@2.6.5/croppie.min.js"></script>
 </head>
 <body>
 
@@ -186,16 +186,14 @@
     </div>
     <div id="photoCropSection" style="display:none;">
       <div id="ratioButtons">
-        <button type="button" class="ratioBtn" data-ratio="NaN">Free</button>
+        <button type="button" class="ratioBtn" data-ratio="original">Original</button>
         <button type="button" class="ratioBtn" data-ratio="1">1:1</button>
         <button type="button" class="ratioBtn" data-ratio="0.75">3:4</button>
         <button type="button" class="ratioBtn" data-ratio="1.3333">4:3</button>
         <button type="button" class="ratioBtn" data-ratio="0.5625">9:16</button>
         <button type="button" class="ratioBtn" data-ratio="1.7778">16:9</button>
       </div>
-      <div id="cropperContainer">
-        <img id="cropperImg">
-      </div>
+      <div id="cropperContainer"></div>
       <button type="button" id="cropDoneBtn">Done</button>
     </div>
   </div>
@@ -361,83 +359,95 @@ function showPhotoStep() {
 function showPhotoViewMode() {
   document.getElementById('photoViewSection').style.display = '';
   document.getElementById('photoCropSection').style.display = 'none';
-  if (cropperInstance) {
-    cropperInstance.destroy();
-    cropperInstance = null;
+  if (croppieInstance) {
+    croppieInstance.destroy();
+    croppieInstance = null;
   }
   renderPhotoFinal(); // the exact same, unchanged render function
 }
 
-let cropperInstance = null;
+let croppieInstance = null;
+let currentRatio = 'original';
 
 function showPhotoCropMode() {
   document.getElementById('photoViewSection').style.display = 'none';
   document.getElementById('photoCropSection').style.display = '';
+  document.querySelectorAll('.ratioBtn').forEach(b => b.classList.toggle('active', b.dataset.ratio === currentRatio));
+  buildCroppie();
+}
 
-  const cropperImgEl = document.getElementById('cropperImg');
+function buildCroppie() {
+  const container = document.getElementById('cropperContainer');
+  if (croppieInstance) {
+    croppieInstance.destroy();
+    croppieInstance = null;
+  }
+  container.innerHTML = '';
+
   const fullW = photoImg.width || photoImg.naturalWidth;
   const fullH = photoImg.height || photoImg.naturalHeight;
-  document.getElementById('cropperContainer').style.aspectRatio = `${fullW} / ${fullH}`;
+  const photoRatio = fullW / fullH;
+  const ratio = currentRatio === 'original' ? photoRatio : parseFloat(currentRatio);
 
-  document.querySelectorAll('.ratioBtn').forEach(b => b.classList.toggle('active', b.dataset.ratio === 'NaN'));
-
-  function setupCropperWithUrl(url) {
-    cropperImgEl.src = url;
-    cropperImgEl.onload = () => {
-      let initialCanvasData = null;
-      let refitTimer = null;
-      cropperInstance = new Cropper(cropperImgEl, {
-        viewMode: 1,
-        dragMode: 'move',
-        autoCropArea: 1,
-        aspectRatio: NaN, // free -- any ratio, not locked
-        zoomable: true,
-        cropBoxResizable: true,
-        cropBoxMovable: true,
-        toggleDragModeOnDblclick: false,
-        data: CROP_RECT ? { x: CROP_RECT.x, y: CROP_RECT.y, width: CROP_RECT.width, height: CROP_RECT.height } : undefined,
-        ready() {
-          initialCanvasData = cropperInstance.getCanvasData();
-        },
-        cropend() {
-          // a moment after you finish adjusting a handle, zoom back out so
-          // the whole photo is visible again -- the crop selection itself
-          // (in image coordinates) is unaffected by this, only the view
-          clearTimeout(refitTimer);
-          refitTimer = setTimeout(() => {
-            if (cropperInstance && initialCanvasData) {
-              cropperInstance.setCanvasData(initialCanvasData);
-            }
-          }, 400);
-        }
-      });
-    };
+  // boundary = the visible working area (fixed to the panel's actual width);
+  // viewport = the fixed crop window inside it, sized to the chosen ratio --
+  // this window never moves or resizes itself; only the photo underneath it
+  // zooms/pans, which is what keeps this feeling solid instead of glitchy.
+  const boundaryW = container.clientWidth;
+  const boundaryH = Math.round(boundaryW * 1.1);
+  let viewportW, viewportH;
+  if (ratio >= 1) {
+    viewportW = Math.round(boundaryW * 0.9);
+    viewportH = Math.round(viewportW / ratio);
+  } else {
+    viewportH = Math.round(boundaryH * 0.9);
+    viewportW = Math.round(viewportH * ratio);
   }
 
+  croppieInstance = new Croppie(container, {
+    viewport: { width: viewportW, height: viewportH, type: 'square' },
+    boundary: { width: boundaryW, height: boundaryH },
+    showZoomer: true,
+    enableZoom: true,
+    enableResize: false,
+    mouseWheelZoom: true
+  });
+
   // Use the original uploaded file's own URL directly -- no canvas pixel
-  // extraction involved at all, unlike the old approach (photoImg.toBlob()),
-  // which is very likely what a phone content-filter was intercepting.
-  setupCropperWithUrl(originalPhotoURL);
+  // extraction involved to get the image in, unlike the old approach
+  // (photoImg.toBlob()), which is very likely what a phone content-filter
+  // was intercepting.
+  const bindOptions = { url: originalPhotoURL };
+  if (CROP_RECT && currentRatio === lastBoundRatio) {
+    // restore the previous crop position if we're just re-entering crop
+    // mode without having changed the ratio
+    bindOptions.points = [CROP_RECT.x, CROP_RECT.y, CROP_RECT.x + CROP_RECT.width, CROP_RECT.y + CROP_RECT.height];
+  }
+  croppieInstance.bind(bindOptions);
+  lastBoundRatio = currentRatio;
 }
+
+let lastBoundRatio = null;
 
 document.getElementById('cropBtn').addEventListener('click', showPhotoCropMode);
 
 document.querySelectorAll('.ratioBtn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (!cropperInstance) return;
     document.querySelectorAll('.ratioBtn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    const ratio = parseFloat(btn.dataset.ratio); // NaN parses to NaN correctly, matching "free"
-    cropperInstance.setAspectRatio(ratio);
+    currentRatio = btn.dataset.ratio;
+    buildCroppie();
   });
 });
 
 document.getElementById('cropDoneBtn').addEventListener('click', () => {
-  if (cropperInstance) {
-    const d = cropperInstance.getData();
-    if (d.width > 0 && d.height > 0) {
-      CROP_RECT = { x: d.x, y: d.y, width: d.width, height: d.height };
-      computeGeometry(d.width, d.height);
+  if (croppieInstance) {
+    const data = croppieInstance.get();
+    const [x1, y1, x2, y2] = data.points.map(Number);
+    const w = x2 - x1, h = y2 - y1;
+    if (w > 0 && h > 0) {
+      CROP_RECT = { x: x1, y: y1, width: w, height: h };
+      computeGeometry(w, h);
     }
   }
   showPhotoViewMode();
@@ -524,7 +534,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   unitsList = [];
   renderUnitsChips();
   mediaInput.value = '';
-  if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
+  if (croppieInstance) { croppieInstance.destroy(); croppieInstance = null; }
 });
 
 // -- units chip input --
