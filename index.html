@@ -186,12 +186,8 @@
     </div>
     <div id="photoCropSection" style="display:none;">
       <div id="ratioButtons">
-        <button type="button" class="ratioBtn" data-ratio="original">Original</button>
-        <button type="button" class="ratioBtn" data-ratio="1">1:1</button>
-        <button type="button" class="ratioBtn" data-ratio="0.75">3:4</button>
-        <button type="button" class="ratioBtn" data-ratio="1.3333">4:3</button>
-        <button type="button" class="ratioBtn" data-ratio="0.5625">9:16</button>
-        <button type="button" class="ratioBtn" data-ratio="1.7778">16:9</button>
+        <button type="button" class="ratioBtn" data-ratio="original">Original - Free</button>
+        <button type="button" class="ratioBtn" data-ratio="0.75">3:4 (recommended)</button>
       </div>
       <div id="cropperContainer"></div>
       <button type="button" id="cropDoneBtn">Done</button>
@@ -422,13 +418,14 @@ function buildCroppie() {
   // makes it consistent for any photo at a given crop shape instead.
   const minZoom = Math.max(viewportW / fullW, viewportH / fullH);
   const maxZoom = minZoom * 8;
+  const isLockedRatio = currentRatio === '0.75'; // "3:4 (recommended)" -- locked shape, zoom/pan only
 
   croppieInstance = new Croppie(container, {
     viewport: { width: viewportW, height: viewportH, type: 'square' },
     boundary: { width: boundaryW, height: boundaryH },
     showZoomer: true,
     enableZoom: true,
-    enableResize: true,
+    enableResize: !isLockedRatio,
     enableOrientation: true,
     mouseWheelZoom: true,
     minZoom: minZoom,
