@@ -32,10 +32,11 @@
     margin-bottom: 20px;
   }
   label { display:block; font-size: 13px; font-weight:700; margin-bottom:6px; color:#ccc; }
-  input[type=text] {
+  input[type=text], input[type=time] {
     width:100%; padding:10px 12px; border-radius:8px; border:none;
     margin-bottom:14px; font-family:'Poppins',sans-serif; font-weight:700;
-    font-size:16px; color:#333;
+    font-size:16px; color:#333; background:#fff;
+    -webkit-appearance: none; appearance: none;
   }
   input[type=file] { margin-bottom: 14px; }
   button {
@@ -853,6 +854,20 @@ function fitText(ctx, text, maxWidth, startSize, minSize, weight) {
   return size;
 }
 
+// The native time input's raw value is always 24-hour "HH:MM", regardless
+// of whether the picker itself displayed AM/PM to match the device's own
+// settings -- so this conversion always runs, unconditionally, to get a
+// consistent "2:03 PM" style result on the poster either way.
+function formatTime12Hour(value) {
+  if (!value) return '';
+  const [hStr, mStr] = value.split(':');
+  let h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${mStr} ${suffix}`;
+}
+
 function drawLogoAndText(ctx, logoOverride) {
   const img = logoOverride || logoImg;
   const logoScale = LOGO_W / img.naturalWidth;
@@ -952,7 +967,7 @@ function drawLogoAndText(ctx, logoOverride) {
 
   drawColumn(leftX, 'left', location, condition, leftMaxWidth);
   if (nightShiftEnabled && mode === 'photo') {
-    const timeVal = document.getElementById('nightShiftTimeInput').value; // native "HH:MM" string, as typed on the device
+    const timeVal = formatTime12Hour(document.getElementById('nightShiftTimeInput').value);
     drawColumn(rightX, 'right', timeVal, header, rightMaxWidth);
   } else {
     drawColumn(rightX, 'right', header, units, rightMaxWidth);
